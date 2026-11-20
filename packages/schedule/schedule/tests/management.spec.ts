@@ -57,6 +57,18 @@ it('manages Host tasks globally with Host-generated ids', async () => {
   })
 })
 
+it('reads a task through a destination filter only when it delivers to that Session', async () => {
+  const { service } = await setup()
+  const owned = await service.remoteCreate({
+    title: 'Owned', prompt: 'Owned', timing: { kind: 'rrule', rrule: daily }, target: { kind: 'session', sessionId: SessionId('target') },
+  })
+  const fresh = await service.remoteCreate({ title: 'Fresh', prompt: 'Fresh', timing: { kind: 'rrule', rrule: daily }, target: { kind: 'new' } })
+  expect(await service.view({ id: owned.id, targetSessionId: SessionId('target') })).toEqual(owned)
+  expect(await service.view({ id: owned.id, targetSessionId: SessionId('other') })).toEqual({ id: owned.id, code: 'schedule_not_found' })
+  expect(await service.view({ id: fresh.id, targetSessionId: SessionId('target') })).toEqual({ id: fresh.id, code: 'schedule_not_found' })
+  expect(await service.list({ targetSessionId: SessionId('target') })).toMatchObject({ items: [{ id: owned.id }], total: 1 })
+})
+
 it('keeps committed mutations successful when a change observer throws', async () => {
   const test = await setup()
   const warn = vi.spyOn(test.ctx.logger, 'warn')

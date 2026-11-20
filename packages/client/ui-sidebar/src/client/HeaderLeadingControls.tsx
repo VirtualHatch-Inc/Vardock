@@ -1,6 +1,6 @@
 /** Window-chrome controls for the fully hidden sidebar (frame shell.leading seat). */
 import {
-  IconNewChatOutlineRegular, IconPanelLeftOutlineRegular, Tooltip,
+  IconAgentPresetOutlineRegular, IconNewChatOutlineRegular, IconPanelLeftOutlineRegular, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the frame's shell.leading slot declaration.
@@ -22,10 +22,12 @@ export type HeaderLeadingControlsProps =
  * @returns the sidebar toggle, plus New Session on Desktop while access allows `session/create`.
  */
 export function HeaderLeadingControls({
-  toggleSidebar, startSession, trackEntryClick, useRemoteAccess, useShortcuts, t,
+  toggleSidebar, startSession, trackEntryClick, useRemoteAccess, useConversationEntrance, useShortcuts, t,
 }: HeaderLeadingControlsProps) {
-  // A page whose access snapshot excludes starting a Session keeps only the sidebar toggle here.
-  const canStartSession = useRemoteAccess('session/create')
+  const conversationEntrance = useConversationEntrance(value => value)
+  const canStartSession = useRemoteAccess(conversationEntrance?.action ?? 'session/create')
+  const primaryLabel = conversationEntrance?.label ?? t('session.new.label')
+  const PrimaryIcon = conversationEntrance === null ? IconNewChatOutlineRegular : IconAgentPresetOutlineRegular
   const desktop = document.documentElement.hasAttribute('data-platform')
   const shortcut = useShortcuts(rows => rows.find(row => row.id === 'sidebar.left.toggle'))
   const newShortcut = useShortcuts(rows => rows.find(row => row.id === 'session.new'))
@@ -44,18 +46,18 @@ export function HeaderLeadingControls({
         </button>
       </Tooltip>
       {desktop && canStartSession && (
-        <Tooltip label={t('session.new.label')} shortcutKeys={newShortcut?.keys} delayMs={500}>
+        <Tooltip label={primaryLabel} shortcutKeys={newShortcut?.keys} delayMs={500}>
           <button
             type="button"
             className={css.iconButton}
-            aria-label={t('session.new.label')}
+            aria-label={primaryLabel}
             aria-keyshortcuts={newShortcut?.aria}
             onClick={() => {
-              trackEntryClick({ menu_name: 'new_session', position: 'titlebar' })
+              if (conversationEntrance === null) trackEntryClick({ menu_name: 'new_session', position: 'titlebar' })
               startSession()
             }}
           >
-            <IconNewChatOutlineRegular size={16} />
+            <PrimaryIcon size={16} />
           </button>
         </Tooltip>
       )}

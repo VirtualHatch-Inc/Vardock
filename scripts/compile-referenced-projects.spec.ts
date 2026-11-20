@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { buildBenchArtifacts } from './build-bench-artifacts.ts'
 import { aggregateCheckArgs, buildHostContracts, buildLibraryArtifacts, compileReferencedProjects } from './compile-referenced-projects.ts'
-import { runCiBench } from './run-ci-bench.ts'
 import { removeFixtureSafely } from './test-fixture-cleanup.ts'
 import { setPublishedFiles, writeTypertWorkspace } from './typert-workspace.fixture.ts'
 
@@ -149,7 +149,7 @@ describe('internal artifact build order', () => {
     const commands = recordedCommands(root)
     writeFileSync(join(leaf, 'src/index.ts'), 'export const value: number = "invalid"\n')
 
-    runCiBench(root)
+    buildBenchArtifacts(root)
 
     expect(commands()).toEqual([
       ['run', 'build:native-system'],
@@ -158,11 +158,10 @@ describe('internal artifact build order', () => {
       ['exec', 'tsdown', '--config-loader', 'native', '--env.DSH_BUILD_FACE', 'client'],
       ['exec', 'tsdown', '--config-loader', 'native', '--config', 'benchmarks/tsdown.config.ts'],
       ['run', 'build:web'],
-      ['run', 'test:bench:built'],
     ].map(args => ({ args, title: 'Inherited Build Title' })))
 
     expect(() => { buildLibraryArtifacts(root, false) }).toThrow('host compiler exited with')
-    expect(commands()).toHaveLength(7)
+    expect(commands()).toHaveLength(6)
   })
 })
 

@@ -41,6 +41,7 @@ kind: "package-reference"
 
 | 情形 | 你看到的消息 |
 |---|---|
+| 模型禁用摘要压缩 | `The selected model does not support conversation compaction. Start a new conversation when its context is full.` |
 | 压缩已在运行，或 agent 正在轮次中 | `Compaction is unavailable because this process has an active compaction, or the agent is not idle.` |
 | 压缩过程中历史发生了变化 | `The history selected for compaction changed before it could be replaced. The attempt is recorded in the session log.` |
 | 无法产生有用的摘要 | `Compaction could not produce a useful summary. The attempt is recorded in the session log.` |

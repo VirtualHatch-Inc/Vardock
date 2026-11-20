@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Servicio de autorización de operaciones",
+    "description": "Autoriza operaciones aisladas de shell y de Codex local con un presupuesto compartido."
+  }
+}

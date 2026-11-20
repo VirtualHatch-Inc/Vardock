@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "HTTPS 操作代理",
+    "description": "使用操作授权服务持有的凭据，将获批的 JSON 请求发送到已配置的 HTTPS 地址。"
+  }
+}

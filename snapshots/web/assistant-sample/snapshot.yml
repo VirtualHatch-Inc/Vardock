@@ -1,0 +1,8 @@
+version: 1
+scenario: assistant-sample
+profile: web
+composition: web-assistant-delegation
+recording: authored
+platform: posix
+header:
+  class: web-assistant-delegation

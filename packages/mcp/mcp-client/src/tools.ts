@@ -471,8 +471,11 @@ async function prepareImageProjection(
  * - image/audio/resource blocks: replaced with a placeholder
  *
  * Policy-owned canonical-value replacements may omit fields required on the MCP wire.
+ * @param mcpContent - ordered content blocks of one tool result.
+ * @param toolName - raw tool name used in placeholders.
+ * @returns the joined text.
  */
-function extractText(mcpContent: JsonValue[], toolName: string): string {
+export function extractText(mcpContent: JsonValue[], toolName: string): string {
   const content = projectContent(mcpContent, toolName)
   // The default image projector below also returns text, so this local call
   // cannot produce a core image block.

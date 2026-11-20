@@ -1,17 +1,17 @@
 ---
 name: dsh-ci-test-reliability
-description: Design, review, and diagnose DeepSeek Harness tests and fixtures that can fail nondeterministically under CI concurrency, shared host resources, clocks, process-global state, subprocesses, network listeners, or asynchronous teardown. Use when adding or changing tests with those risks, investigating flaky CI, or reviewing test isolation; use dsh-pre-push-checks separately to select outgoing commands.
+description: Design, review, and diagnose DeepSeek Harness tests and fixtures that can fail nondeterministically under concurrent gate execution, shared host resources, clocks, process-global state, subprocesses, network listeners, or asynchronous teardown. Use when adding or changing tests with those risks, investigating flaky tests, or reviewing test isolation; use dsh-pre-push-checks separately to select outgoing commands.
 ---
 
-# Reliable DSH CI tests
+# Reliable DSH tests under concurrency
 
-Build tests that remain correct under the repository's real CI topology, not only when run alone on a quiet workstation. This skill owns isolation and reliability decisions; it does not replace the repository's test-tier policy or select every command for a push.
+Build tests that remain correct when the repository's gates and test processes run concurrently on one host, not only when run alone on a quiet workstation. This skill owns isolation and reliability decisions; it does not replace the repository's test-tier policy or select every command for a push.
 
 ## Read the owning rules
 
 - Use [the testing policy](../../../docs/testing.md) to select unit, coverage, expected-output, snapshot, browser, or real-API evidence.
 - Use [the defensive patterns](../../../docs/defensive-patterns/general.md) for lifecycle, subprocess, cancellation, and teardown behavior.
-- Read the active Vitest config and GitHub workflow when their worker or job topology affects the test.
+- Read the active Vitest config and [the gate runner](../../../scripts/run-gates.ts) when their worker or gate topology affects the test.
 - For recorded-session scenarios, also follow [the snapshot instructions](../../../snapshots/AGENTS.md).
 - Use [dsh-pre-push-checks](../dsh-pre-push-checks/SKILL.md) after the test design is sound to select outgoing validation.
 
@@ -21,12 +21,12 @@ Assume these layers can overlap unless the active configuration proves otherwise
 
 1. Tests in one Vitest file.
 2. Separate Vitest files or worker processes.
-3. Independent Vitest or repository-gate processes in one job.
-4. Different Actions jobs whose runners share one host.
+3. Independent Vitest or repository-gate processes in one aggregate.
+4. Other gate runs and test processes on the same host.
 
 Process isolation does not isolate host ports, predictable filesystem paths, external services, databases, sockets, or inherited child processes. For every acquired resource, identify its owner, atomic allocation mechanism, observable readiness signal, registered cleanup, and quiescent completion signal.
 
-Do not serialize an entire suite merely because one fixture lacks isolation. Narrow the exclusive scope or change the resource allocation first. A sequential Vitest block cannot protect a host resource from another file, process, job, or runner.
+Do not serialize an entire suite merely because one fixture lacks isolation. Narrow the exclusive scope or change the resource allocation first. A sequential Vitest block cannot protect a host resource from another file, process, or gate run.
 
 ## Allocate resources atomically
 
@@ -55,7 +55,7 @@ Prefer an injected dependency or instance-local adapter. When mutation is requir
 
 ## Respect platform-owned semantics
 
-CI runs the same suite on Windows and on POSIX hosts, and a value the operating system owns does not always come back the way a test wrote it.
+The same suite runs on Windows and on POSIX hosts, and a value the operating system owns does not always come back the way a test wrote it.
 
 - Writing a value back is safe only when the assertion tolerates the write-back failing. Restoring a file's `mtime` to prove that a fingerprint invalidates anyway holds everywhere; restoring it to prove that a record stays valid assumes a lossless round trip, which NTFS's 100-nanosecond ticks do not give a fractional millisecond. When the assertion depends on the restoration, take the expected value from a fresh read rather than from the remembered one.
 - Windows matches environment variable names case-insensitively, so a fixture seeding `http_proxy` and `HTTP_PROXY` as separate keys holds one entry there.
@@ -64,9 +64,9 @@ CI runs the same suite on Windows and on POSIX hosts, and a value the operating 
 
 Prefer an observation that holds on every platform. When a case genuinely cannot, exclude it on that platform explicitly.
 
-## Budget timeouts against the lane
+## Budget timeouts against the invocation
 
-A `describe` or case timeout overrides the runner's `--testTimeout` instead of yielding to it, so a value below the lane's budget lowers what CI already granted — and the same literal reads as a widening on a host whose default is smaller. A suite bound by process creation takes the lane budget; a tighter value carries the reason it is tighter.
+A `describe` or case timeout overrides Vitest's `--testTimeout` instead of yielding to it, so a value below the invocation's budget lowers what that invocation granted — and the same literal reads as a widening on a host whose default is smaller. A suite bound by process creation takes the invocation's budget; a tighter value carries the reason it is tighter.
 
 Raise the hook budget with the test budget. Setup and teardown pay the same contention, so lifting only the case budget moves a contended failure into `afterEach`.
 
@@ -113,11 +113,11 @@ Do not present these as root-cause fixes for deterministic local tests:
 
 Retries remain valid for documented transient external-provider tests under the real-API policy. Keep that exception at the external boundary.
 
-Restoring a budget is not masking. Raising a suite to the lane budget it already had, or sizing a bounded retry to the contention actually measured on the runner, names the awaited work and returns what the lane granted; neither invents headroom around an unexamined wait.
+Restoring a budget is not masking. Raising a suite to the budget it already had, or sizing a bounded retry to the contention actually measured on the host, names the awaited work and returns what the invocation granted; neither invents headroom around an unexamined wait.
 
 ## Diagnose existing flakes
 
-For an existing probabilistic CI failure, read [the CI flake diagnosis workflow](references/ci-flake-diagnosis.md). A diagnosis-only request remains read-only: report the cause and evidence unless the user also asks for a fix.
+For an existing probabilistic failure, read [the flake diagnosis workflow](references/ci-flake-diagnosis.md). A diagnosis-only request remains read-only: report the cause and evidence unless the user also asks for a fix.
 
 ## Validate and report
 
@@ -128,4 +128,4 @@ Run the smallest focused regression for the affected behavior. Add topology-spec
 - ports, sockets, or shared paths need concurrent independent-process evidence;
 - a new guard needs a negative control.
 
-Before a push, use [dsh-pre-push-checks](../dsh-pre-push-checks/SKILL.md). Report exact commands and observed results; do not describe retries, skipped tests, or pending CI as passing.
+Before a push, use [dsh-pre-push-checks](../dsh-pre-push-checks/SKILL.md). Report exact commands and observed results; do not describe retries, skipped tests, or unrun checks as passing.

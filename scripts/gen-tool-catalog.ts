@@ -91,6 +91,9 @@ import type { WorkflowRun, WorkflowStartRequest } from '@deepseek-ai/dsh-workflo
 import * as ToolRalph from '@deepseek-ai/dsh-tool-ralph'
 import * as ToolWorkflow from '@deepseek-ai/dsh-tool-workflow'
 import * as ToolWorkspaceDependencies from '@deepseek-ai/dsh-tool-workspace-dependencies'
+import { registerTools as registerAssistantTools } from '../packages/experimental/assistant/src/tools.ts'
+import * as OperationControlAgent from '@deepseek-ai/dsh-operation-control/agent'
+import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import { githubSlug } from './verify-md-links.ts'
 
 /** Attachment seam marker that makes the attachments-conditional `read_image` schema harvestable. */
@@ -207,6 +210,55 @@ export interface ToolPackage {
  * guard proves it is exhaustive against the on-disk glob.
  */
 const TOOL_PACKAGES: ToolPackage[] = [
+  {
+    pkg: '@deepseek-ai/dsh-operation-control',
+    dir: 'operation-control',
+    source: {
+      exec: 'packages/experimental/execution-container/src/tool.ts',
+      inspect_business_operations: 'packages/experimental/operation-control/src/agent.ts',
+      list_business_actions: 'packages/experimental/operation-control/src/agent.ts',
+    },
+    requires: ['ctx.tools', 'ctx.agents', 'ctx.approval'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      await ctx.plugin(SessionStore)
+      await ctx.plugin(AgentRegistry)
+      await ctx.plugin(ApprovalService)
+      await ctx.plugin(OperationControlAgent, {
+        socketPath: '/catalog/operation.sock',
+        approval: { socketPath: '/catalog/decision.sock', mainSessionId: 'assistant-main' },
+      })
+    },
+  },
+  {
+    pkg: '@deepseek-ai/dsh-assistant',
+    dir: 'assistant',
+    source: 'packages/experimental/assistant/src/tools.ts',
+    requires: ['ctx.tools', 'ctx.assistant'],
+    writes: ['tool/call', 'tool/result', 'Assistant work records', 'user/message for requests and results'],
+    async mount(ctx) {
+      const unavailable = (): never => {
+        throw new Error('gen-tool-catalog: Assistant work operations are unavailable during schema harvest')
+      }
+      await ctx.plugin({
+        inject: ['tools'],
+        apply(inner: Context) {
+          registerAssistantTools(inner, {
+            mainSessionId: SessionId('assistant-main'),
+            delegate: unavailable,
+            assertMain: unavailable,
+            retry: unavailable,
+            list: unavailable,
+            listInputs: unavailable,
+            stop: unavailable,
+            disclosableWork: unavailable,
+            report: unavailable,
+          })
+        },
+      })
+    },
+    note: 'The Web opt-in layer exposes delegation, listing, and cancellation in the main Assistant Session. Active work Sessions have the report tool.',
+  },
   {
     pkg: '@deepseek-ai/dsh-plugin-manager',
     dir: 'plugin-manager',

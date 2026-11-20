@@ -6,14 +6,14 @@
   en: 0d7399a58529b9eb
   zh: 7f445b06430f21a4
 /testing-policy/tiers:
-  en: ae5eb9cc384542cb
-  zh: 3473df2dc1e36bd0
+  en: 4b65ed1e972435dc
+  zh: d2a39257f9b23dbd
 /testing-policy/how-specs-execute:
-  en: 022c534e72e23142
-  zh: c07a20994224f37c
+  en: a87a4821b19ffa72
+  zh: b1f3fc454614240f
 /testing-policy/the-with-key-policy-inference-is-cheap-here:
-  en: d555af53068bf523
-  zh: ddc4265e5de5b3be
+  en: 5d49c320c91aeab8
+  zh: 6908e9ad8faf9c8a
 /testing-policy/prefer-the-real-implementation-over-a-mock:
   en: 96a5bdcea4960b25
   zh: 98ad9d468e55a5ed
@@ -27,8 +27,8 @@
   en: 8a142fe4cbd196d7
   zh: 0f8c682cd8c654de
 /testing-policy/test-subprocess-launch-modes:
-  en: 5ea1c7ff7a9a5728
-  zh: bbae70e0cd2d5cbf
+  en: 08fe118daf7a1c0d
+  zh: 0ac594acb4726862
 /testing-policy/when-a-snapshot-test-is-required:
-  en: 055966993c5392c0
-  zh: eb35536ad2c4320b
+  en: 2b89bf4ed4222616
+  zh: fb9463d79a688207

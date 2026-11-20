@@ -132,7 +132,8 @@ describe('experimental workspace constraints', () => {
   })
 
   it.each(Object.entries(EXPERIMENTAL_PACKAGE_NAME_EXCEPTIONS))('retains %s only at its declared directory', (dir, name) => {
-    expect(checkExperimentalManifest({ dir, manifest: { name, publishConfig: { access: 'public' } } })).toEqual([])
+    const publication = isPublicExperimentalPackageDirectory(dir) ? { publishConfig: { access: 'public' } } : { private: true }
+    expect(checkExperimentalManifest({ dir, manifest: { name, ...publication } })).toEqual([])
     expect(checkExperimentalManifest({ ...experimental, manifest: { ...experimental.manifest, name } }))
       .toEqual([expect.stringContaining('declared for this directory')])
   })
@@ -199,8 +200,15 @@ describe('experimental workspace constraints', () => {
     ])
   })
 
-  it('keeps the current experimental publication set unrestricted', () => {
-    expect(PRIVATE_EXPERIMENTAL_PACKAGE_DIRECTORIES).toEqual([])
+  it('excludes only Vardock packages from the experimental publication set', () => {
+    expect(PRIVATE_EXPERIMENTAL_PACKAGE_DIRECTORIES).toEqual([
+      'packages/experimental/assistant',
+      'packages/experimental/execution-container',
+      'packages/experimental/llm-codex',
+      'packages/experimental/operation-broker',
+      'packages/experimental/operation-control',
+      'packages/experimental/operation-evidence',
+    ])
   })
 
   it('limits the public default to experimental package directories', () => {
@@ -623,6 +631,17 @@ it('requires the standalone shortcut protocol and rejects unrelated runtime file
     ['lib/index.js', 'lib/client.js', 'lib/types/**/*.d.ts'],
     ['lib/index.js', 'lib/client.js', 'lib/protocol.js', 'lib/extra.js', 'lib/types/**/*.d.ts'],
   ]) {
+    expect(checkWorkspaceManifest({ dir, manifest: { ...manifest, files } }))
+      .toEqual([expect.stringContaining('package.json files must be')])
+  }
+})
+
+it('requires both operation adapters in the published payload', () => {
+  const dir = 'packages/experimental/operation-control'
+  const manifest = JSON.parse(readFileSync(new URL(`../${dir}/package.json`, import.meta.url), 'utf8')) as WorkspaceManifest['manifest']
+  expect(checkWorkspaceManifest({ dir, manifest })).toEqual([])
+  for (const omitted of ['lib/agent.js', 'lib/model-agent.js']) {
+    const files = manifest.files!.filter(file => file !== omitted)
     expect(checkWorkspaceManifest({ dir, manifest: { ...manifest, files } }))
       .toEqual([expect.stringContaining('package.json files must be')])
   }

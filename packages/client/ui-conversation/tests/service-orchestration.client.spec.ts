@@ -16,6 +16,7 @@ import { ComposerBlockRegistry } from '../src/client/input/blocks.ts'
 import { InputHub } from '../src/client/input/hub.ts'
 import { reportMessageSubmission } from '../src/client/input/submission-analytics.ts'
 import { ConversationController } from '../src/client/service.ts'
+import { UiConversation } from '../src/client/conversation/assembly.ts'
 import { zh } from '../src/client/locales.ts'
 
 const IMAGE_REF = {
@@ -221,6 +222,38 @@ describe('ConversationController', () => {
     expect(uploadImage).toHaveBeenCalledOnce()
     created.mockRestore()
     await b.runtime.dispose()
+  })
+
+  it('uploads the original image as a file only while the destination Session requests verbatim attachments', async () => {
+    const b = await bench()
+    const session = b.runtime.sessions.binding('s1')!.session
+    const uiConversation = new UiConversation(b.runtime.ctx, b.runtime.ctx.sessions)
+    const uploadFile = vi.fn((_data: Blob | Uint8Array) => Promise.resolve({
+      ok: true as const,
+      value: { receiptId: 'verbatim-receipt' as never, file: { attachmentId: 'sha256:2' as never, name: 'pixel.png', bytes: 3 } },
+    }))
+    const uploadImage = vi.fn(() => Promise.resolve({
+      ok: true as const, value: { receiptId: 'image-receipt' as never, image: IMAGE_REF },
+    }))
+    Object.assign(session, { uploadFile, uploadImage })
+    const image = new File([Uint8Array.of(0, 255, 14)], 'pixel.png', { type: 'image/png' })
+    const created = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:normal-image')
+    try {
+      const dispose = uiConversation.registerVerbatimAttachmentPolicy(id => id === session.sessionId)
+      const [draft] = b.root.createDrafts(session.sessionId, [image], UPLOAD_IMAGES)
+      if (draft === undefined) throw new Error('expected a draft')
+      expect(draft.kind).toBe('file')
+      expect(created).not.toHaveBeenCalled()
+      await vi.waitFor(() => { expect(b.root.fileUploads.getSnapshot()[draft.id]?.status).toBe('ready') })
+      expect(uploadFile.mock.calls[0]?.[0]).toBe(image)
+      expect(uploadImage).not.toHaveBeenCalled()
+      await dispose()
+      expect(b.root.createDrafts(session.sessionId, [image], UPLOAD_IMAGES)[0]?.kind).toBe('image')
+      expect(created).toHaveBeenCalledOnce()
+    } finally {
+      created.mockRestore()
+      await b.runtime.dispose()
+    }
   })
 
   it('retries a failed image upload and aborts it with its draft', async () => {

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Ejecución aislada",
+    "description": "Ejecuta scripts de sesión en un espacio de trabajo aislado de Docker o de una máquina virtual de Apple."
+  }
+}

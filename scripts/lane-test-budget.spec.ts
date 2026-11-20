@@ -57,9 +57,8 @@ function runFixture(budget: string | undefined): { status: number | null; output
   const env: NodeJS.ProcessEnv = { ...process.env, NO_COLOR: '1' }
   for (const name of Object.keys(env)) {
     // The parent worker's Vitest state and the coverage coordinator's own
-    // variables describe this process, not the child; the Actions reporter
-    // would otherwise annotate the parent job with the fixture's failures.
-    if (name.startsWith('VITEST') || name.startsWith('DSH_COVERAGE_') || name === 'GITHUB_ACTIONS') Reflect.deleteProperty(env, name)
+    // variables describe this process, not the child.
+    if (name.startsWith('VITEST') || name.startsWith('DSH_COVERAGE_')) Reflect.deleteProperty(env, name)
   }
   if (budget !== undefined) env[COVERAGE_TEST_TIMEOUT_ENV] = budget
   const child = spawnSync(process.execPath, [vitestCli, 'run', '--config', configPath], {

@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.2-vardock/assistant-work-permissions/guide.md
+/:
+  en: d1ec0fcc419677cf
+  zh: aa18d421d1977e0b
+/assistant-work-states-its-permissions-and-response-access:
+  en: 526c457d71ca05ef
+  zh: 955d64148c2e1712
+/assistant-work-states-its-permissions-and-response-access/change:
+  en: eae26bdcc892301d
+  zh: cd5432024358e303
+/assistant-work-states-its-permissions-and-response-access/migration:
+  en: 3cc9959ce63f6d29
+  zh: f037334f4d8ac45d

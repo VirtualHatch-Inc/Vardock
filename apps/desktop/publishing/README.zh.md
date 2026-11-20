@@ -19,13 +19,11 @@ description: "将完整 Desktop 安装包与更新清单发布到选定下载服
 - [上传凭据](#credentials)
 - [上传审计与恢复](#audit-and-recovery)
 
-自托管留存构建使用 [CI 发布工作流](ci/README.zh.md)，在原机器保留安装包并支持恢复发布。 以下命令继续作为现有人工授权的本地上传器使用：它们保留 checkout 内的审计记录，并使用操作员的 Git 身份，不共享 CI 发布器的锁、审批或仅补 tag 恢复机制。不要让两种上传器并发写入同一频道。两者复用相同的上传计划校验；分开编排可保留现有手动命令，同时为 CI 增加不可变 attempt 恢复能力。统一或退役手动命令属于独立工作。
-
 <a id="prerequisites"></a>
 
 ## 发布前提
 
-发布需要完整的 release 产物和操作者明确授权。生成安装包或下载 Actions 产物不会发布它。先阅读[发布版本规则](../packaging/README.zh.md#release-versions)并保留打包证据。机器 preset 用于打包，不支持 upload/COS 命令：取消设置 `DSH_PACKAGING_PRESET`，并提供既有目标 dotenv 上传配置。配置以及真实 COS/CDN 验收由发布操作者验证。
+发布需要完整的 release 产物和操作者明确授权。生成安装包不会发布它。先阅读[发布版本规则](../packaging/README.zh.md#release-versions)并保留打包证据。机器 preset 用于打包，不支持 upload/COS 命令：取消设置 `DSH_PACKAGING_PRESET`，并提供既有目标 dotenv 上传配置。配置以及真实 COS/CDN 验收由发布操作者验证。
 
 <a id="upload-updates"></a>
 
@@ -73,9 +71,9 @@ Windows NSIS 上传要求安装包旁存在生成的非空 `.exe.blockmap`。blo
 
 固定安装包下载在仓库根目录使用 `pnpm run upload:latest:mac:arm64`、`pnpm run upload:latest:mac:x64` 或 `pnpm run upload:latest:win:x64`。它们把已完成目标的 DMG 或 EXE 上传到 `desktop/dsh-latest-macos-arm64.dmg`、`desktop/dsh-latest-macos-x64.dmg` 或 `desktop/dsh-latest-windows-x64.exe`。生产 URL 以 `https://download.deepseek.com/` 开头；测试 URL 使用 `DOWNLOAD_TEST_ORIGIN`。两个部署环境均复用目标 dotenv 中的部署、bucket 和凭据、全部常规发布校验以及下述上传审计。每个命令覆盖一个固定对象，不发布更新清单、blockmap 或发布标签。测试固定下载在测试 bucket 中跨发布 ID 共享；包内更新 URL 仍要求原有发布 ID。发布由操作人员显式执行，也允许预发布版本。生产命令随后提交一次 EdgeOne URL 缓存清除任务并报告任务 ID，不查询或等待缓存清除完成。测试上传仍由部署基础设施管理缓存策略。本地回环测试覆盖上传行为；真实 COS 和 CDN 验收由发布操作人员负责。
 
-生产固定下载要求在目标 dotenv 中配置 `DOWNLOAD_PROD_EO_ZONE_ID`，且既有 `DOWNLOAD_PROD_COS_SECRET_ID` / `DOWNLOAD_PROD_COS_SECRET_KEY` 身份具备对应站点的 `teo:CreatePurgeTask` 权限。发布操作人员须在使用前确认该权限；无需新增 CI Secret。上传前解析必需配置。提交请求超时为 30 秒，不自动重试。
+生产固定下载要求在目标 dotenv 中配置 `DOWNLOAD_PROD_EO_ZONE_ID`，且既有 `DOWNLOAD_PROD_COS_SECRET_ID` / `DOWNLOAD_PROD_COS_SECRET_KEY` 身份具备对应站点的 `teo:CreatePurgeTask` 权限。发布操作人员须在使用前确认该权限。上传前解析必需配置。提交请求超时为 30 秒，不自动重试。
 
-命令报告提交已接受，不代表缓存清除已完成。EO 结果输出到控制台，不另建刷新记录文件；既有上传审计仅记录 COS 写入。提交被拒绝或未确认时，命令以失败状态退出，已上传安装包保持发布。连接中断或未收到响应时，先检查 EO 任务历史再重新提交。使用 `pnpm run purge:latest <target>` 可只提交刷新，无需上传；需要生产配置和凭据，无需本地安装包。DPAPI 用户复用原凭据启动器，在 `-Upload -Latest` 命令上添加 `-PurgeOnly`。按目标串行执行上传和单独刷新。[CI 发布工作流](ci/README.zh.md#recovery-and-records)使用独立的官网上传和刷新观察 job。
+命令报告提交已接受，不代表缓存清除已完成。EO 结果输出到控制台，不另建刷新记录文件；既有上传审计仅记录 COS 写入。提交被拒绝或未确认时，命令以失败状态退出，已上传安装包保持发布。连接中断或未收到响应时，先检查 EO 任务历史再重新提交。使用 `pnpm run purge:latest <target>` 可只提交刷新，无需上传；需要生产配置和凭据，无需本地安装包。DPAPI 用户复用原凭据启动器，在 `-Upload -Latest` 命令上添加 `-PurgeOnly`。按目标串行执行上传和单独刷新。
 
 <a id="credentials"></a>
 

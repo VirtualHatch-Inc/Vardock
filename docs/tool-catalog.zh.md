@@ -19,6 +19,8 @@
 
 | 工具包 | 模型可见名称 | 依赖 | 写入／影响 | 随产品发布的别名 | 部署说明 |
 | --- | --- | --- | --- | --- | --- |
+| `@deepseek-ai/dsh-operation-control` | `exec`, `inspect_business_operations`, `list_business_actions` | `ctx.tools`, `ctx.agents`, `ctx.approval` | `tool/call`、`tool/result` | - | - |
+| `@deepseek-ai/dsh-assistant` | `delegate_work`、`list_work`、`report_work`、`stop_work` | `ctx.tools`、`ctx.assistant` | `tool/call`、`tool/result`、Assistant 工作记录、请求和结果对应的 `user/message` | - | 启用 Web 的 Assistant 补丁后，主会话可使用委派、列出和停止工具。正在运行的工作会话可使用报告工具。 |
 | `@deepseek-ai/dsh-plugin-manager` | `plugin_manager` | `ctx.tools`, `ctx.pluginManager`, `ctx.sandboxPolicy` | `tool/call`, `tool/result`, `user/message` | - | - |
 | `@deepseek-ai/dsh-plugin-market` | `plugin_market` | `ctx.tools`, `ctx.pluginMarket` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-mcp-resources` | `list_mcp_resource_templates`, `list_mcp_resources`, `read_mcp_resource` | `ctx.tools`, `ctx.mcpResources` | `tool/call`, `tool/result` | - | - |
@@ -56,6 +58,273 @@
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-workspace-dependencies` | `load_workspace_dependencies` | `ctx.tools` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
+
+<a id="deepseek-aidsh-operation-control"></a>
+
+## `@deepseek-ai/dsh-operation-control`
+
+### `exec`
+
+在当前工作会话的隔离目录 /workspace 中运行 shell 脚本。随附的 Linux 工作镜像提供 POSIX /bin/sh、带内置 fetch 的 Node.js 24 和标准 Linux 工具。未安装 Python 和 curl。使用 POSIX shell 语法；heredoc 结束标记之后的命令应另起一行，不要以分号开头。这是外部执行服务，/workspace 可写。模型提供方原生文件系统的沙箱限制不适用于此工具。多次调用或显式继续工作时，该目录中的文件会保留。工作区无法直接访问网络，也无法访问宿主机文件。配置的网关可以允许访问选定的网络目标。若设置了 DSH_BROKER_URL，使用 Node.js fetch 以 POST JSON {requestKey, action, body} 向其提交外部操作：requestKey 为 UUID，action 为管理员配置的操作名，body 为精确的 JSON 文本，Authorization: Bearer 使用 DSH_BROKER_TOKEN。不要泄露该令牌。脚本可以依据管理员的策略自动运行。外部请求等待所有者批准，除非配置的规则允许发送。检查 JSON 响应：status 为观测到的 HTTP 状态码，或由 toolError 说明工具调用的结果是否被标记为错误，code 表示失败；操作返回响应且本工作可以接收时，body 为服务的响应文本，bodyOmitted 说明其缺失的原因；not-permitted 表示请求已发送，但本工作不能接收响应。响应包含用于查询的操作 ID。收到 HTTP 响应不代表业务完成。操作结果不确定时（例如响应缺失），报告这一不确定的结果并附上其操作 ID，不要再次提交相同的请求。每次调用都会在返回前停止本次启动的进程。先检查工作区，再重试中断的命令。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "command": {
+      "type": "string",
+      "description": "POSIX shell script to run from /workspace."
+    }
+  },
+  "required": [
+    "command"
+  ]
+}
+```
+
+来源： [`packages/experimental/execution-container/src/tool.ts`](../packages/experimental/execution-container/src/tool.ts)
+
+### `inspect_business_operations`
+
+查询工作会话已记录的外部操作。将 reconcile 设为 true，可通过只读查询检查结果尚未确定的操作。只有附带回执的 succeeded 或 failed 业务完成状态才确认结果。不要重发结果不确定的操作。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "Worker Session id returned by delegate_work or list_work."
+    },
+    "reconcile": {
+      "type": "boolean",
+      "description": "Look up each eligible unresolved operation on this page once.",
+      "default": false
+    },
+    "after": {
+      "type": "string",
+      "description": "Use the previous result’s next value to read older operations."
+    }
+  },
+  "required": [
+    "session_id"
+  ]
+}
+```
+
+来源： [`packages/experimental/operation-control/src/agent.ts`](../packages/experimental/operation-control/src/agent.ts)
+
+### `list_business_actions`
+
+列出工作会话可请求的外部操作，以及每个操作的用途和 JSON 请求体。委派需要外部操作的工作前先调用此工具，并在工作会话的指令中写明操作名称和请求体格式。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+来源： [`packages/experimental/operation-control/src/agent.ts`](../packages/experimental/operation-control/src/agent.ts)
+
+<a id="deepseek-aidsh-assistant"></a>
+
+## `@deepseek-ai/dsh-assistant`
+
+### `delegate_work`
+
+把独立工作委派给后台会话并立即返回。结果会回到本对话。先检查结果，再使用 `previous_work_id` 显式继续已结束或中断的工作会话。对结果不确定的外部操作应先检查，再决定是否重做。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "request_key": {
+      "type": "string",
+      "description": "Use a new key for every continuation or changed instruction, permission, or input. Reuse a key only to retrieve the same request with every argument unchanged; that does not run it again."
+    },
+    "prompt": {
+      "type": "string",
+      "description": "Self-contained instruction and relevant context for the worker. Selected attachments are imported under input/ in its isolated workspace; the worker receives their paths. Do not give Host paths as worker paths."
+    },
+    "previous_work_id": {
+      "type": "string",
+      "description": "Previous terminal work request whose Session and files should continue with the current prompt. This creates a distinct work request; its earlier operations remain history."
+    },
+    "inputs": {
+      "type": "array",
+      "description": "For fresh work, required when the owner request that triggered this entrance turn has attachments. Select their seq and index from list_work_inputs; pass [] when this work needs no files. Omission is allowed without attachments. A continuation inherits its existing files.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "description": "Sequence of the owner message."
+          },
+          "index": {
+            "type": "integer",
+            "description": "Zero-based attachment position in the message content."
+          }
+        },
+        "required": [
+          "seq",
+          "index"
+        ]
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "description": "Permissions the worker needs, and no more. Required for new work. With previous_work_id, omit to keep the previous permissions or pass a narrower set. To add a missing permission, start fresh work without previous_work_id.",
+      "additionalProperties": false,
+      "properties": {
+        "exec": {
+          "type": "boolean",
+          "description": "Enable for running any script, reading or processing workspace files, calculating results from files, writing reports, or calling external actions. File import/export permissions do not enable execution."
+        },
+        "brokerActions": {
+          "type": "array",
+          "description": "Exact names from list_business_actions of the external actions the worker may request from a command. Use an empty list when exec is false.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "data": {
+          "type": "object",
+          "description": "File and service-response permissions for this work. Omit to grant none.",
+          "additionalProperties": false,
+          "properties": {
+            "import": {
+              "type": "boolean",
+              "description": "Enable to copy selected owner attachments into the workspace; reading them also needs exec and both disclosure permissions."
+            },
+            "export": {
+              "type": "boolean",
+              "description": "Enable to return workspace files as owner downloads; creating them also needs exec and both disclosure permissions."
+            },
+            "discloseToModel": {
+              "type": "boolean",
+              "description": "Whether imported or exported file data may reach a model through work results."
+            },
+            "discloseToUser": {
+              "type": "boolean",
+              "description": "Whether imported or exported file data may reach the owner through work history or downloads."
+            },
+            "returnResponses": {
+              "type": "boolean",
+              "description": "Whether the worker’s commands may receive the response text of an external action, which then reaches the worker model. Without it, the worker sees only the status."
+            }
+          },
+          "required": [
+            "import",
+            "export",
+            "discloseToModel",
+            "discloseToUser",
+            "returnResponses"
+          ]
+        }
+      },
+      "required": [
+        "exec",
+        "brokerActions"
+      ]
+    }
+  },
+  "required": [
+    "request_key",
+    "prompt"
+  ]
+}
+```
+
+来源： [`packages/experimental/assistant/src/tools.ts`](../packages/experimental/assistant/src/tools.ts)
+
+### `list_work`
+
+列出工作状态、工作会话 ID、已授予权限和保存的结果。修复宿主错误后，也会重试待处理的排队和结果配送。运行状态不代表完成；结果不明时应先检查再继续。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+来源： [`packages/experimental/assistant/src/tools.ts`](../packages/experimental/assistant/src/tools.ts)
+
+### `list_work_inputs`
+
+列出最近一条包含文件或图片的所有者消息中的附件。使用其 seq 和 index 为新工作选择输入。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+来源： [`packages/experimental/assistant/src/tools.ts`](../packages/experimental/assistant/src/tools.ts)
+
+### `report_work`
+
+保存本次工作请求的结果并结束轮次。导入过文件的工作只有在本次工作中观察到非错误的 exec 结果后才能报告完成；这不验证文件使用或所报数值。计算值和文件内容应依据执行输出，不能从文件名或路径推测。缺少所需权限或工具时使用 `failed`，明确指出缺少什么，不得编造结果。需要提问或等待决定时使用 `needs_input`。报告中应包含证据和已经发生的部分影响。主 Assistant 会话会接收该报告。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "description": "Explicit outcome.",
+      "enum": [
+        "completed",
+        "needs_input",
+        "failed"
+      ]
+    },
+    "result": {
+      "type": "string",
+      "description": "Result with evidence, or a precise question or failure."
+    },
+    "artifacts": {
+      "type": "array",
+      "description": "Paths relative to the worker workspace of the files the owner asked to receive. Each file uses one execution slot; put evidence in result instead of attaching it.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "status",
+    "result"
+  ]
+}
+```
+
+来源： [`packages/experimental/assistant/src/tools.ts`](../packages/experimental/assistant/src/tools.ts)
+
+### `stop_work`
+
+停止排队中或运行中的工作。此前已经发生的影响会保留。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "work_id": {
+      "type": "string",
+      "description": "Request id returned by delegate_work."
+    }
+  },
+  "required": [
+    "work_id"
+  ]
+}
+```
+
+来源： [`packages/experimental/assistant/src/tools.ts`](../packages/experimental/assistant/src/tools.ts)
+
+启用 Web 的 Assistant 补丁后，主会话可使用委派、列出和停止工具。正在运行的工作会话可使用报告工具。
 
 <a id="deepseek-aidsh-plugin-manager"></a>
 

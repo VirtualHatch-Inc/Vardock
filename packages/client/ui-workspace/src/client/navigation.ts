@@ -13,7 +13,7 @@ import type {
 } from '@deepseek-ai/dsh-api-session-controller/client'
 // Type-only: pulls the `agentPreset` Session projection value into this program.
 import type {} from '@deepseek-ai/dsh-agent-preset-registry/types'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import { createSnapshotStore, type ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import type {
   IWorkspaces, WorkspaceId, WorkspaceSnapshot, WorkspaceView,
@@ -30,26 +30,71 @@ interface MainSelection {
   readonly subagentAddress?: SubagentAddress
 }
 
+interface RegisteredEntrance {
+  readonly provider: ConversationEntrance
+  readonly lifetime: AbortController
+}
+
+/** A draft failure already reported through the Workspace notice. */
+class DraftPreparationError extends Error {}
+
 /** Content preparation and Agent preset for the Session a Workspace flow opens. */
 export interface StartSessionOptions extends DraftInitializationOptions {
   /** Agent preset the Session runs; the Host default when omitted. */
   readonly agentPreset?: string
 }
 
+/** Label and access action for the active conversation entrance. */
+export interface ConversationEntrancePresentation {
+  readonly label: string
+  readonly action: RemoteEndpoint
+}
+
+/** Optional provider for the initial conversation and New Session requests. */
+export interface ConversationEntrance {
+  /** Global Remote action used to show the primary navigation control. */
+  readonly action: RemoteEndpoint
+  /** @returns the current localized name of the conversation. */
+  label(): string
+  /**
+   * Resolve an existing Session without modifying its preset.
+   * @param signal - cancellation for superseding navigation or provider disposal.
+   * @param agentPreset - explicitly requested preset, when supplied by the caller.
+   * @returns the target Session id; rejects when the request cannot be honored.
+   */
+  resolve(signal: AbortSignal, agentPreset?: string): Promise<SessionId>
+  /**
+   * Present a failure from resolving or opening the target.
+   * @param error - failure from the resolver or Session retention.
+   * @returns a localized notice with any applicable next step.
+   */
+  failureMessage(error: unknown): string
+}
+
 /** Workspace archive and directory operations consumed by Client UI domains. */
 export interface UiWorkspace {
+  /** Primary conversation action metadata, or null when New Session uses the Workspace flow. */
+  readonly conversationEntrance: ObservableSnapshot<ConversationEntrancePresentation | null>
+  /**
+   * Replace automatic startup selection and New Session with one existing conversation.
+   * @param provider - resolver and presentation for the custom entrance.
+   * @returns disposer that restores ordinary New Session and cancels pending entrance navigation.
+   * @throws when another provider is registered.
+   */
+  registerConversationEntrance(provider: ConversationEntrance): () => void
   /**
    * Select a Session and show its Conversation as one UI navigation action.
    * @param target - known Session identity or durable direct-parent subagent address to display.
    */
   openSession(target: SessionTarget): void
   /**
-   * Connect a Workspace and open its Session unless a later navigation supersedes it.
+   * Open the registered conversation entrance, or connect a Workspace and open its Session.
    * @param workspaceId - target Workspace.
    * @param beforeOpen - optional synchronous preparation for the selected Session,
    * skipped after supersession; a throw aborts the open and releases the retained reference.
    * @param options - choices for the Session the connection creates or reuses.
-   * @returns completion; a superseded request may create a Session but does not open it.
+   * @returns `entrance` when the entrance handles the request. A superseded request may
+   * create a Session but does not open it.
    * @throws on failure; a refused creation is also shown through the Workspace
    * notice unless a later navigation or disposal superseded the request.
    */
@@ -57,7 +102,7 @@ export interface UiWorkspace {
     workspaceId: WorkspaceId,
     beforeOpen?: (sessionId: SessionId) => void,
     options?: Pick<StartSessionOptions, 'agentPreset'>,
-  ): Promise<void>
+  ): Promise<void | 'entrance'>
   /**
    * Fork a Session without changing the current selection.
    * @param sessionId - source Session.
@@ -83,7 +128,8 @@ export interface UiWorkspace {
   /**
    * Open the Workspace blank `connectWorkspace` resolves, so New Session returns to that blank's
    * unsent draft. A creation the Host refuses is shown through the Workspace notice and leaves the
-   * selection as it was.
+   * selection as it was. A registered conversation entrance replaces Workspace selection
+   * while honoring supported draft options.
    * @param workspaceId - explicit target; absent inherits the current or most recent Workspace.
    * @param options - initial content, the blank's preset, and `whenDraftExists`, which decides
    * whether existing text or attachments are kept, replaced, or followed by the prompt.
@@ -170,6 +216,10 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     readonly attempt: Promise<SessionId>
   }>()
   private readonly lifetime = new AbortController()
+  private readonly entrancePresentation = createSnapshotStore<ConversationEntrancePresentation | null>(null)
+  readonly conversationEntrance: ObservableSnapshot<ConversationEntrancePresentation | null> = this.entrancePresentation
+  private entrance: RegisteredEntrance | undefined
+  private explicitlyNavigated = false
   private readonly selection = createSnapshotStore<MainSelection>(
     {}, { persist: { name: 'dsh.sessions.current' } },
   )
@@ -207,6 +257,26 @@ class UiWorkspaceService extends Service implements UiWorkspace {
 
   connectWorkspace(workspaceId: WorkspaceId, options: Pick<StartSessionOptions, 'agentPreset'> = {}): Promise<SessionId> {
     return this.connectBlank(workspaceId, options)
+  }
+
+  registerConversationEntrance(provider: ConversationEntrance): () => void {
+    if (this.entrance !== undefined) throw new Error('uiWorkspace: a conversation entrance is already registered')
+    const entrance = { provider, lifetime: new AbortController() }
+    const publish = (): void => { this.entrancePresentation.set({ label: provider.label(), action: provider.action }) }
+    const locale = this.ctx.locale
+    this.entrance = entrance
+    publish()
+    const stopLocale = locale.subscribe(publish)
+    if (!this.explicitlyNavigated && this.ctx.layout.panelInfo.getSnapshot().activePanelId === null) {
+      void this.openConversationEntrance(entrance).catch(logEntranceFailure)
+    }
+    return () => {
+      if (this.entrance !== entrance) return
+      entrance.lifetime.abort()
+      this.entrance = undefined
+      stopLocale()
+      this.entrancePresentation.set(null)
+    }
   }
 
   /**
@@ -291,14 +361,20 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   }
 
   openSession(target: SessionTarget): void {
-    this.replaceMain(target, this.lifetime.signal, 'reveal')
+    this.explicitlyNavigated = true
+    const navigation = AbortSignal.any([this.ctx.layout.beginNavigation(), this.lifetime.signal])
+    this.replaceMain(target, navigation, 'reveal')
   }
 
   openWorkspace(
     workspaceId: WorkspaceId,
     beforeOpen?: (sessionId: SessionId) => void,
     options: Pick<StartSessionOptions, 'agentPreset'> = {},
-  ): Promise<void> {
+  ): Promise<void | 'entrance'> {
+    this.explicitlyNavigated = true
+    if (this.entrance !== undefined) {
+      return this.openConversationEntrance(this.entrance, beforeOpen, options.agentPreset).then(() => 'entrance' as const)
+    }
     return this.openWorkspaceSession(workspaceId, beforeOpen, options)
   }
 
@@ -335,10 +411,14 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   }
 
   startSession(workspaceId?: WorkspaceId, options?: StartSessionOptions): void {
+    this.explicitlyNavigated = true
     const { agentPreset, ...draft } = options ?? {}
-    const draftOptions = options === undefined ? undefined : draft
-    const initializeDraft = draftOptions !== undefined && (draftOptions.prompt !== undefined
-      || (draftOptions.whenDraftExists ?? (draftOptions.clearPreviousDraft === true ? 'replace' : 'keep')) === 'replace')
+    const draftOptions = options !== undefined && (draft.prompt !== undefined
+      || (draft.whenDraftExists ?? (draft.clearPreviousDraft === true ? 'replace' : 'keep')) === 'replace') ? draft : undefined
+    if (this.entrance !== undefined) {
+      void this.openConversationEntrance(this.entrance, this.draftInitializer(draftOptions), agentPreset).catch(logEntranceFailure)
+      return
+    }
     const workspace = this.workspaces.list.getSnapshot()
     const sessions = this.sessions.list.getSnapshot()
     const current = this.mainReference?.sessionId
@@ -350,21 +430,62 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       : undefined
     const target = workspaceId ?? currentWorkspaceId ?? recent
     if (target === undefined) {
-      if (initializeDraft) {
+      if (draftOptions !== undefined) {
         this.notify({ kind: 'createFailed', message: this.ctx.locale.bind('workspace')('draft.workspaceRequired') })
         return
       }
       this.clearMain()
       return
     }
-    const opening = this.openWorkspace(target, initializeDraft ? (id) => {
-      const binding = this.sessions.binding(id)
-      if (binding === undefined) this.draftPreparationFailed()
-      this.prepareDraft(binding, draftOptions)
-    } : undefined, agentPreset === undefined ? {} : { agentPreset })
+    const opening = this.openWorkspace(target, this.draftInitializer(draftOptions), agentPreset === undefined ? {} : { agentPreset })
     void opening.catch(
       (reason: unknown) => { console.warn('new session failed:', reason) },
     )
+  }
+
+  private async openConversationEntrance(
+    entrance: RegisteredEntrance,
+    beforeOpen?: (sessionId: SessionId) => void,
+    agentPreset?: string,
+  ): Promise<void> {
+    const { provider, lifetime } = entrance
+    const navigation = AbortSignal.any([this.ctx.layout.beginNavigation(), this.lifetime.signal, lifetime.signal])
+    try {
+      if (this.sessions.list.getSnapshot().phase !== 'ready') await this.waitForSessionCatalog(navigation)
+      navigation.throwIfAborted()
+      const sessionId = await provider.resolve(navigation, agentPreset)
+      this.replaceMain(sessionId, navigation, 'reveal', beforeOpen)
+    } catch (error: unknown) {
+      if (navigation.aborted) return
+      if (!(error instanceof DraftPreparationError)) {
+        this.notify({ kind: 'conversationEntranceFailed', message: provider.failureMessage(error) })
+      }
+      throw error
+    }
+  }
+
+  /** Settle when the Session baseline arrives or navigation is cancelled. */
+  private waitForSessionCatalog(signal: AbortSignal): Promise<void> {
+    const list = this.sessions.list
+    return new Promise((resolve) => {
+      const abort = (): void => { stop(); resolve() }
+      const stop = list.subscribe(() => {
+        if (list.getSnapshot().phase !== 'ready') return
+        signal.removeEventListener('abort', abort)
+        stop()
+        resolve()
+      })
+      signal.addEventListener('abort', abort, { once: true })
+    })
+  }
+
+  private draftInitializer(options?: DraftInitializationOptions): ((id: SessionId) => void) | undefined {
+    if (options === undefined) return undefined
+    return (id) => {
+      const binding = this.sessions.binding(id)
+      if (binding === undefined) this.draftPreparationFailed()
+      this.prepareDraft(binding, options)
+    }
   }
 
   private prepareDraft(binding: SessionBinding, options: DraftInitializationOptions): void {
@@ -376,7 +497,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   private draftPreparationFailed(): never {
     const message = this.ctx.locale.bind('workspace')('draft.initializationFailed')
     this.notify({ kind: 'createFailed', message })
-    throw new Error(message)
+    throw new DraftPreparationError(message)
   }
 
   async archiveSession(sessionId: SessionId, options: { readonly stopActivity?: boolean } = {}): Promise<void> {
@@ -433,7 +554,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     const reconcile = (): void => {
       if (this.lifetime.signal.aborted) return
       if (this.clearArchivedCurrent()) return
-      if (initial !== 'waiting' || this.restorationNavigation?.aborted === true) return
+      if (this.entrance !== undefined || initial !== 'waiting' || this.restorationNavigation?.aborted === true) return
       const workspace = this.workspaces.list.getSnapshot()
       const sessions = this.sessions.list.getSnapshot()
       if (workspace.phase !== 'ready' || sessions.phase !== 'ready') return
@@ -454,9 +575,11 @@ class UiWorkspaceService extends Service implements UiWorkspace {
 
     const disposeWorkspaces = this.workspaces.list.subscribe(reconcile)
     const disposeSessions = this.sessions.list.subscribe(reconcile)
+    const disposeEntrance = this.conversationEntrance.subscribe(reconcile)
     reconcile()
     return () => {
       this.lifetime.abort()
+      disposeEntrance()
       disposeSessions()
       disposeWorkspaces()
     }
@@ -552,6 +675,10 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     if (panel === 'reveal') this.ctx.layout.selectPanel(null)
   }
 
+}
+
+function logEntranceFailure(reason: unknown): void {
+  console.warn('conversation entrance failed:', reason)
 }
 
 /**

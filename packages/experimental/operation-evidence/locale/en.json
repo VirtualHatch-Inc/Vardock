@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Execution witness",
+    "description": "Keep admission, revocation, and outcome records under a separate service account."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Autorisierungsdienst für Operationen",
+    "description": "Autorisiere isolierte Shell- und lokale Codex-Operationen innerhalb eines gemeinsamen Budgets."
+  }
+}

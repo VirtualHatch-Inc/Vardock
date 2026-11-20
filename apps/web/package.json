@@ -44,6 +44,7 @@
     "@deepseek-ai/dsh-cmdline": "workspace:*",
     "@deepseek-ai/dsh-pwsh-local": "workspace:*",
     "@deepseek-ai/dsh-agent-team": "workspace:*",
+    "@deepseek-ai/dsh-execution-container": "workspace:*",
     "@deepseek-ai/dsh-experimental-webworker-packer": "workspace:*",
     "@deepseek-ai/dsh-experimental-webworker-runtime": "workspace:*",
     "@deepseek-ai/dsh-remote-mock": "workspace:*",

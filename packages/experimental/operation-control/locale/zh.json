@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "操作授权服务",
+    "description": "按共享预算授权隔离的 shell 与本地 Codex 操作。"
+  }
+}

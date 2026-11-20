@@ -171,6 +171,31 @@ function abortListenerCalls(spy: SpiedListenerMethod): number {
 }
 
 describe('RemoteAccessService registrations', () => {
+  it('enforces a plugin’s guard before a grant and removes it when the fiber disposes', async () => {
+    const { ctx, access } = await setup()
+    const policy = new GuestPolicy()
+    policy.hold(GUEST, { role: READER, resource: GLOBAL })
+    access.registerPolicy('test-guest', policy)
+    const fiber = ctx.plugin({
+      inject: ['remoteAccess'],
+      apply: (pluginCtx: Context) => {
+        pluginCtx.remoteAccess.guard(({ action }) => action === 'notes/read' ? 'notes-paused' : undefined)
+      },
+    })
+    await fiber
+    for (const principal of [OWNER, GUEST]) {
+      await expect(call(ctx, principal, 'read')).rejects.toMatchObject({
+        code: 'remote-access/denied', details: { action: 'notes/read', reason: 'notes-paused' },
+      })
+    }
+    expect(policy.bindings).not.toHaveBeenCalled()
+    await expect(call(ctx, GUEST, 'hidden')).rejects.toMatchObject({ details: { reason: 'no-allow' } })
+    expect(access.decide(ask(GUEST, 'event:notes/changed', GLOBAL))).toEqual({ kind: 'allow' })
+    await fiber.dispose()
+    await expect(call(ctx, GUEST, 'read')).resolves.toBe('read')
+    await expect(call(ctx, OWNER, 'read')).resolves.toBe('read')
+  })
+
   it('removes a policy with its disposer and with the plugin fiber that registered it', async () => {
     const { ctx, access } = await setup()
     const policy = new GuestPolicy()
@@ -200,6 +225,28 @@ describe('RemoteAccessService registrations', () => {
 })
 
 describe('RemoteAccessService.decide', () => {
+  it('refuses a throwing guard and logs its first failure', async () => {
+    const { ctx, access } = await setup()
+    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
+    const defect = new Error('guard callback failed')
+    const dispose = access.guard(() => { throw defect })
+    const later = vi.fn(() => undefined)
+    access.guard(later)
+    for (let round = 0; round < 2; round++) {
+      await expect(call(ctx, OWNER, 'read')).rejects.toMatchObject({
+        code: 'remote-access/denied', details: { action: 'notes/read', reason: 'guard-failed' },
+      })
+    }
+    expect(later).not.toHaveBeenCalled()
+    expect(warn.mock.calls).toEqual([
+      ['remote access: guard failed for notes/read; the operation was refused'],
+      [defect],
+    ])
+    dispose()
+    await expect(call(ctx, OWNER, 'read')).resolves.toBe('read')
+    expect(later).toHaveBeenCalledOnce()
+  })
+
   it('allows the owner without any policy and refuses a kind without a policy', async () => {
     const { ctx, access } = await setup()
     expect(access.decide(ask(OWNER, 'notes/hidden', ROOM))).toEqual({ kind: 'allow' })
@@ -342,6 +389,28 @@ describe('RemoteAccessService.decide', () => {
 })
 
 describe('RemoteAccessService.allows', () => {
+  it('filters items for every caller while snapshots show policy grants', async () => {
+    const { ctx, access } = await setup()
+    access.registerPolicy('test-guest', {
+      bindings: () => [
+        { role: READER, resource: GLOBAL }, { role: SHELF_READER, resource: ROOM }, { role: SHELF_READER, resource: ROOM2 },
+      ],
+    })
+    const guard = vi.fn<Parameters<RemoteAccessService['guard']>[0]>(({ resources }) =>
+      resources.some(resource => resource.kind === 'test-shelf' && resource.id === ROOM2.id) ? 'shelf-paused' : undefined)
+    access.guard(guard)
+    for (const principal of [OWNER, GUEST]) {
+      await expect(call(ctx, principal, 'rooms')).resolves.toEqual(['r1'])
+      expect(guard).toHaveBeenLastCalledWith(ask(principal, 'notes/rooms', ROOM2))
+    }
+    guard.mockClear()
+    expect(access.snapshotFor(OWNER)).toEqual({ type: 'baseline', owner: true })
+    const snapshot = access.snapshotFor(GUEST)
+    if (snapshot.owner) throw new Error('guest received the owner baseline')
+    expect(snapshot.grants).toContainEqual({ resource: ROOM2, actions: ['notes/read', 'notes/rooms'] })
+    expect(guard).not.toHaveBeenCalled()
+  })
+
   it('filters list items for non-owners on one resource without arguments', async () => {
     const { ctx, access } = await setup()
     const policy = new GuestPolicy()

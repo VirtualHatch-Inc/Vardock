@@ -6,6 +6,12 @@
  * experimental name only through this map.
  */
 export const EXPERIMENTAL_PACKAGE_NAME_EXCEPTIONS: Readonly<Record<string, string>> = {
+  'packages/experimental/assistant': '@deepseek-ai/dsh-assistant',
+  'packages/experimental/execution-container': '@deepseek-ai/dsh-execution-container',
+  'packages/experimental/operation-broker': '@deepseek-ai/dsh-operation-broker',
+  'packages/experimental/operation-control': '@deepseek-ai/dsh-operation-control',
+  'packages/experimental/operation-evidence': '@deepseek-ai/dsh-operation-evidence',
+  'packages/experimental/llm-codex': '@deepseek-ai/dsh-llm-codex',
   'packages/experimental/cua': '@deepseek-ai/dsh-cua',
   'packages/experimental/cua-bundle': '@deepseek-ai/dsh-cua-bundle',
   'packages/experimental/tool-session-query': '@deepseek-ai/dsh-tool-session-query',
@@ -109,8 +115,15 @@ export function experimentalPackageRecordNamespace(name: string): string | undef
   return name.slice(name.startsWith(EXPERIMENTAL_PACKAGE_NAME_PREFIX) ? EXPERIMENTAL_PACKAGE_NAME_PREFIX.length : '@deepseek-ai/dsh-'.length)
 }
 
-/** Experimental packages excluded from public releases and npm baselines. */
-export const PRIVATE_EXPERIMENTAL_PACKAGE_DIRECTORIES: readonly string[] = []
+/** Experimental packages excluded from public releases and npm baselines. Vardock's packages are not released under this scope. */
+export const PRIVATE_EXPERIMENTAL_PACKAGE_DIRECTORIES: readonly string[] = [
+  'packages/experimental/assistant',
+  'packages/experimental/execution-container',
+  'packages/experimental/llm-codex',
+  'packages/experimental/operation-broker',
+  'packages/experimental/operation-control',
+  'packages/experimental/operation-evidence',
+]
 
 /**
  * Whether an experimental package publishes under the default-public policy.

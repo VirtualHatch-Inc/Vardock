@@ -43,6 +43,7 @@ export async function externalTestParent(ctx: Context, cwd?: string): Promise<Ag
     model: unsupportedModel(),
     inbox,
     send: (message, target) => { inbox.append(target, message) },
+    wake: () => {},
     followup: (message) => { inbox.append('next-turn', message) },
     steer: (message) => { inbox.append('next-step', message) },
     inject: (message) => { inbox.append('next-step', message) },

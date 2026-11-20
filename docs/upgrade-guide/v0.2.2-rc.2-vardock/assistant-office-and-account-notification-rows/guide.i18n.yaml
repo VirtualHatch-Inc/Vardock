@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.2-vardock/assistant-office-and-account-notification-rows/guide.md
+/:
+  en: 612ab56364da555c
+  zh: 47fc7266543983fa
+/assistant-overlay-removes-unrelated-host-controls:
+  en: 1ab59b08b82ba5b1
+  zh: 7974e5652a8db74f
+/assistant-overlay-removes-unrelated-host-controls/change:
+  en: f22c42c400ff602a
+  zh: 0418e7951ba4aacb
+/assistant-overlay-removes-unrelated-host-controls/migration:
+  en: 3df4fedb578d3685
+  zh: 8183281fbb301bb1

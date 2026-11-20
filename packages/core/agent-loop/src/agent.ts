@@ -177,6 +177,10 @@ export class ReactLoopAgent implements Agent {
     if (wakeup) this.wakeDriver(wakingAfterAbort)
   }
 
+  wake(): void {
+    if (this.inbox.hasPending) this.wakeDriver(true)
+  }
+
   followup(input: UserMessage): void {
     this.send(input, 'next-turn', true)
   }
@@ -225,21 +229,16 @@ export class ReactLoopAgent implements Agent {
   }
 
   /**
-   * Start one driver, or latch its wake behind maintenance or an aborted
-   * activity. A wake sent while idle always opens its turn boundary, even
-   * when its message was cleared; only a latched replay is suppressed when
-   * the queue no longer holds the wake.
-   * @param wakeAfterAbort - the {@link send} classification, captured before
-   *   the inbox insertion so a reentrant cancel cannot reclassify it.
+   * Start one driver or defer a wake until the active work settles. An idle
+   * wake opens a turn immediately. A deferred wake requires pending input
+   * when the Agent returns to idle.
+   * @param deferWhileRunning - an explicit wake or a send initiated after active cancellation.
    */
-  private wakeDriver(wakeAfterAbort = false): void {
+  private wakeDriver(deferWhileRunning = false): void {
     if (this.lifetimeSignal.aborted) return
     if (this.phase.kind !== 'idle') {
-      // Maintenance and aborted drivers cannot deliver the wake: latch it for
-      // replay at convergence. Live drivers claim queued work themselves;
-      // disposal never latches, so teardown waits on no model turn.
       const reason = abortedCancelCause(this.phase.abort.signal)
-      if (reason?.kind !== 'disposed' && (this.phase.kind === 'maintenance' || wakeAfterAbort)) {
+      if (reason?.kind !== 'disposed' && (this.phase.kind === 'maintenance' || deferWhileRunning)) {
         this.phase.wakeRequested = true
       }
       return
@@ -279,9 +278,9 @@ export class ReactLoopAgent implements Agent {
     } finally {
       /* v8 ignore next -- kick owns a running phase until this driver boundary */
       if (this.phase.kind === 'running') {
-        const { turn, wakeRequested } = this.phase
+        const { abort, turn, wakeRequested } = this.phase
         this.setPhase({ kind: 'idle', lastTurn: turn })
-        if (wakeRequested && this.inbox.hasPending) this.wakeDriver()
+        if (wakeRequested && abortedCancelCause(abort.signal)?.kind !== 'disposed' && this.inbox.hasPending) this.wakeDriver()
       }
     }
   }

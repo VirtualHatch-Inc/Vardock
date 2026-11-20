@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "本地 Codex",
+    "description": "使用本地 Codex CLI 的登录身份发送模型请求。"
+  }
+}

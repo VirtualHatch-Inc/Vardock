@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { getHeapStatistics } from 'node:v8'
 import { pnpmCommand } from './release/process.ts'
-import { buildCiBenchArtifacts } from './run-ci-bench.ts'
+import { buildBenchArtifacts } from './build-bench-artifacts.ts'
 
 /** Modeled machines: memory available to the whole benchmark process tree, without swap. */
 export const MEMORY_PRESSURE_MACHINES = { '4g': 4, '8g': 8 } as const
@@ -132,7 +132,7 @@ export function runMemoryPressureBench(root: string, machine: MemoryPressureMach
   if (process.platform !== 'linux') {
     throw new Error('run-memory-pressure-bench: memory limits need Linux cgroup v2 and a systemd user manager')
   }
-  buildCiBenchArtifacts(root)
+  buildBenchArtifacts(root)
   return run(root, memoryScopeCommand(machine, [
     ...pnpmCommand(), 'exec', 'tsx', 'scripts/run-memory-pressure-bench.ts', '--scoped', machine,
   ]))

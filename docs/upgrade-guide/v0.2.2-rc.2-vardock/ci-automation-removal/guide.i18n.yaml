@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.2-vardock/ci-automation-removal/guide.md
+/:
+  en: 0db397ad18c256af
+  zh: ad588b5e071ecac7
+/ci-automation-removed:
+  en: fc35271e24d99e9c
+  zh: 813e8458e135e245
+/ci-automation-removed/change:
+  en: a04cd82ad908a99b
+  zh: 2958044c54bf2b8b
+/ci-automation-removed/migration:
+  en: a0c36d59345a0ad8
+  zh: 3ff90ac1374ce9c7

@@ -104,7 +104,7 @@ function mountFrame(windowWidth = frameWidth, content?: AppFrameProps['renderSlo
       useContextMenu={contextMenuHook()} useResource={useResource}
       useWorkspaces={sel => sel(workspaceState)}
       {...allowAllAccess}
-      t={key => key === 'brand.localBuild' ? 'DSH Local Build' : key}
+      t={key => key === 'brand.vardock' ? 'Vardock' : key === 'brand.localBuild' ? 'DSH Local Build' : key}
     />
   )
   const utils = render(element())
@@ -155,6 +155,7 @@ beforeEach(() => {
   animationFrames = new Map()
   nextFrame = 1
   vi.stubEnv('DSH_CLIENT_TITLE', undefined)
+  vi.stubEnv('DSH_CLIENT_BUILD_PROFILE', undefined)
   vi.stubGlobal('ResizeObserver', ResizeObserverStub)
   foldedLandscape = createSnapshotStore(false)
   vi.stubGlobal('matchMedia', () => ({ matches: false }))
@@ -190,7 +191,13 @@ afterEach(() => {
 })
 
 describe('AppFrame', () => {
-  it('localizes the product title without a configured build title', () => {
+  it('uses Vardock without a configured build title or profile', () => {
+    mountFrame()
+    expect(document.title).toBe('Vardock')
+  })
+
+  it('localizes the product title for an explicit local build', () => {
+    vi.stubEnv('DSH_CLIENT_BUILD_PROFILE', 'local')
     mountFrame()
     expect(document.title).toBe('DSH Local Build')
   })
@@ -293,7 +300,7 @@ describe('AppFrame', () => {
       expect(instance.getSnapshot().layoutInfo).toBe(layoutInfo)
       expect(tracks(frame)).toEqual([280, 0])
       expect(selectedSession).toBe(sessionId)
-      expect(document.title).toBe(panelId === null ? 'Session title — DSH Local Build' : 'DSH Local Build')
+      expect(document.title).toBe(panelId === null ? 'Session title — Vardock' : 'Vardock')
     }
   })
 })

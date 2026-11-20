@@ -2,6 +2,18 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write CONTRIBUTING.md
-/contributing:
-  en: 08d2f421ff3617f4
-  zh: 9d060d70ad186dc5
+/contributing-to-vardock:
+  en: 3d5e4a713bb2e158
+  zh: 33de5174250469ba
+/contributing-to-vardock/report-a-problem:
+  en: 3d011a8d6a79b92c
+  zh: c7281263a9e74d8a
+/contributing-to-vardock/make-a-change:
+  en: 448955d2fa4f3ea8
+  zh: 78b325edb32e6bc3
+/contributing-to-vardock/distribution:
+  en: d4c98cff85ca1aa6
+  zh: 64bd7cdab7cc8766
+/contributing-to-vardock/versions:
+  en: 8f73b828419b648c
+  zh: 6b0aecd325f03f19

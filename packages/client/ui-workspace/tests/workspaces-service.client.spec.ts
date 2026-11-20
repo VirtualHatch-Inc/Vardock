@@ -19,7 +19,7 @@ import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import type { DraftInitializationOptions, SessionInputResolver } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { RowToast } from '../src/client/contract/slots.ts'
-import { DirectoryBrowseError, UiWorkspaceService } from '../src/client/navigation.ts'
+import { DirectoryBrowseError, UiWorkspaceService, type ConversationEntrance } from '../src/client/navigation.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { createWorkspaceViewStore, FLAT_SESSION_ORDER_KEY } from '../src/client/stores.ts'
 import { UNGROUPED_KEY } from '../src/client/tree.ts'
@@ -313,13 +313,134 @@ function bench(options: BenchOptions = {}) {
   return { ctx, directoryPicker, sessions, uiWorkspace, workspaces, layout, selectPanel, view, notify, requestDraftInitialization }
 }
 
-function lastOpening(open: MockInstance<UiWorkspaceService['openWorkspace']>): Promise<void> {
+function lastOpening(open: MockInstance<UiWorkspaceService['openWorkspace']>): ReturnType<UiWorkspaceService['openWorkspace']> {
   const result = open.mock.results.at(-1)
   if (result?.type !== 'return') throw new Error('startSession did not start Workspace navigation')
   return result.value
 }
 
 describe('UiWorkspaceService', () => {
+  const entranceId = sid('entrance')
+  const entranceProvider = () => ({
+    action: 'session/list',
+    label: () => 'Home conversation',
+    resolve: vi.fn<ConversationEntrance['resolve']>(async () => entranceId),
+    failureMessage: () => 'Select Home conversation to retry.',
+  }) satisfies ConversationEntrance
+
+  it('opens the registered entrance at startup and restores New Session after disposal', async () => {
+    const worker = summary('worker')
+    persistSelection({ sessionId: worker.id })
+    const b = bench()
+    const provider = entranceProvider()
+    const unregister = b.uiWorkspace.registerConversationEntrance(provider)
+    expect(b.uiWorkspace.conversationEntrance.getSnapshot()).toEqual({ label: 'Home conversation', action: 'session/list' })
+    expect(() => b.uiWorkspace.registerConversationEntrance(provider)).toThrow('already registered')
+    await setImmediate()
+    expect(provider.resolve).not.toHaveBeenCalled()
+    expect(b.sessions.retain).not.toHaveBeenCalled()
+    b.sessions.list.set(sessionState([worker, summary('entrance')]))
+    b.workspaces.list.set(workspaceState([workspace('work', [worker.id])]))
+    await setImmediate()
+    expect(provider.resolve).toHaveBeenCalledOnce()
+    expect(b.sessions.retain).toHaveBeenCalledExactlyOnceWith(entranceId, { source: 'mainView' })
+    expect(b.workspaces.initializeDefault).not.toHaveBeenCalled()
+    expect(b.sessions.create).not.toHaveBeenCalled()
+
+    b.uiWorkspace.openSession(worker.id)
+    expect(b.sessions.retained.at(-1)?.reference.sessionId).toBe(worker.id)
+    b.uiWorkspace.startSession(wid('work'), { prompt: 'Continue this task', whenDraftExists: 'append' })
+    await setImmediate()
+    expect(b.sessions.retained.at(-1)?.reference.sessionId).toBe(entranceId)
+    expect(b.requestDraftInitialization).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ sessionId: entranceId }), { prompt: 'Continue this task', whenDraftExists: 'append' },
+    )
+    expect(b.sessions.create).not.toHaveBeenCalled()
+
+    unregister()
+    expect(b.uiWorkspace.conversationEntrance.getSnapshot()).toBeNull()
+    b.uiWorkspace.startSession(wid('work'))
+    await setImmediate()
+    expect(b.sessions.create).toHaveBeenCalledExactlyOnceWith({ workspaceId: wid('work') })
+    expect(b.sessions.retained.at(-1)?.reference.sessionId).toBe(sid('created-work'))
+  })
+
+  it('replaces automatic restoration with the entrance while a later Session open wins', async () => {
+    const startup = Promise.withResolvers<WorkspaceView>()
+    const opening = Promise.withResolvers<SessionId>()
+    const b = bench({
+      workspaces: workspaceState(), sessions: sessionState(),
+      configureWorkspaces: (workspaces) => { workspaces.initializeDefault.mockReturnValueOnce(startup.promise) },
+    })
+    const provider = entranceProvider()
+    provider.resolve.mockReturnValueOnce(opening.promise)
+    const unregister = b.uiWorkspace.registerConversationEntrance(provider)
+    expect(b.workspaces.initializeDefault.mock.lastCall?.[0]?.aborted).toBe(true)
+    const worker = sid('worker')
+    b.uiWorkspace.openSession(worker)
+    expect(provider.resolve.mock.lastCall?.[0].aborted).toBe(true)
+    startup.resolve(workspace('default'))
+    opening.resolve(entranceId)
+    await setImmediate()
+    expect(b.sessions.retain).toHaveBeenCalledExactlyOnceWith(worker, { source: 'mainView' })
+    expect(b.sessions.create).not.toHaveBeenCalled()
+    unregister()
+  })
+
+  it('stops waiting for the Session baseline when the entrance unregisters', async () => {
+    const b = bench()
+    const provider = entranceProvider()
+    const unregister = b.uiWorkspace.registerConversationEntrance(provider)
+    unregister()
+    b.sessions.list.set(sessionState([summary('entrance')]))
+    await setImmediate()
+    expect(provider.resolve).not.toHaveBeenCalled()
+    expect(b.sessions.retain).not.toHaveBeenCalled()
+  })
+
+  it('preserves an explicit Session when the entrance is registered later', async () => {
+    const b = bench({ sessions: sessionState([summary('worker'), summary('entrance')]) })
+    const worker = sid('worker')
+    b.uiWorkspace.openSession(worker)
+    const provider = entranceProvider()
+    const unregister = b.uiWorkspace.registerConversationEntrance(provider)
+    await setImmediate()
+    expect(provider.resolve).not.toHaveBeenCalled()
+    expect(b.sessions.retain).toHaveBeenCalledExactlyOnceWith(worker, { source: 'mainView' })
+    unregister()
+  })
+
+  it('prepares the registered entrance for an explicit Workspace opening', async () => {
+    const b = bench({ sessions: sessionState([summary('entrance')]) })
+    const provider = entranceProvider()
+    const unregister = b.uiWorkspace.registerConversationEntrance(provider)
+    const beforeOpen = vi.fn()
+    await expect(b.uiWorkspace.openWorkspace(wid('work'), beforeOpen, { agentPreset: 'custom' })).resolves.toBe('entrance')
+    expect(provider.resolve.mock.lastCall?.[1]).toBe('custom')
+    expect(beforeOpen).toHaveBeenCalledExactlyOnceWith(entranceId)
+    expect(b.sessions.retain).toHaveBeenCalledExactlyOnceWith(entranceId, { source: 'mainView' })
+    expect(b.sessions.create).not.toHaveBeenCalled()
+    unregister()
+  })
+
+  it('offers retry after a refused entrance and cancels a pending retry on disposal', async () => {
+    const b = bench({ sessions: sessionState() })
+    const provider = entranceProvider()
+    const retry = Promise.withResolvers<SessionId>()
+    provider.resolve.mockRejectedValueOnce(new Error('unavailable')).mockReturnValueOnce(retry.promise)
+    const unregister = b.uiWorkspace.registerConversationEntrance(provider)
+    await setImmediate()
+    expect(b.notify).toHaveBeenCalledExactlyOnceWith({ kind: 'conversationEntranceFailed', message: 'Select Home conversation to retry.' })
+    b.uiWorkspace.startSession(undefined, { agentPreset: 'custom' })
+    expect(provider.resolve.mock.lastCall?.[1]).toBe('custom')
+    unregister()
+    expect(provider.resolve.mock.lastCall?.[0].aborted).toBe(true)
+    retry.resolve(entranceId)
+    await setImmediate()
+    expect(b.sessions.retain).not.toHaveBeenCalled()
+    expect(b.requestDraftInitialization).not.toHaveBeenCalled()
+  })
+
   it('prepares and selects the default Workspace after both startup baselines', async () => {
     const b = bench({ configureWorkspaces: (workspaces) => {
       workspaces.initializeDefault.mockImplementation(async () => {

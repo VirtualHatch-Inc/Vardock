@@ -27,6 +27,8 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
+宿主为 `plugin-manager` 配置 `management: fixed` 时，页面保留插件贡献的配置页面与标签页，但不提供组合包目录或添加、安装、更新、启用和停用控件；设置中的只读清单仍可使用。
+
 宽度小于 768px 时，页面使用 20px 的左右内边距，与会话页头对齐。
 
 [Ralph 循环](../../experimental/ralph-bundle/README.zh.md)和[会话搜索](../../experimental/session-search/README.zh.md)仍随包提供，但默认不在两个插件列表中展示，只有 profile 启用或另行安装后才显示。已有的启用状态仍可管理；关闭随安装提供的版本后，它会再次隐藏。在**添加插件**中输入准确包名，再选择**立即启用**，即可使用随包提供的版本，无需再次下载。侧栏会话搜索独立于此功能。LiveShare 在其 bundle manifest 中声明相同的默认隐藏意图（`dsh.bundle.listedByDefault: false`），因此在自身声明的行开始运行或被启用前，它不会出现在两个列表（含**更多**页）中。页面的 manifest 规则是通用的：未声明 `listedByDefault: false` 的组合包会列出；声明了的，只有在 profile 启用、安装随附版本被选中，或它声明的某一行开始运行时才列出；隐藏的组合包也不能通过 ID 打开详情。
@@ -85,6 +87,8 @@ Host 将网络失败或超时归因于 GitHub 地址，且提供 npmmirror 时�
 组合包页面上行的开关调用 `pluginManager.setPluginEnabled`，按[开关规则](../../boot/plugin-manager/README.zh.md#use-this-package)在 profile 的 `cordis.patch.yml` 中记录该行的启用状态。启用了 HMR 的 profile 的树随即重组，该行的宿主半区卸下或挂上，组合包其余部分照常运行，页面无需重载即跟随客户端模块图。行使用共享状态标记表示 Host fiber 阶段：pending 与 disabled 为 idle，loading 与 unloading 为 ongoing，active 为 done，failed 为 error。开关只出现在已打开的组合包上；没有存活条目的行，以及 Host 不通过 profile patch 寻址的行，带着 Host 的原因锁定。超过十行的列表带一个按本地化标题、描述、行 id 和模块名筛选的输入框。
 
 ### 配置页
+
+贡献插件可通过 `pluginNavigation.openItem(id)` 直接打开自己的页面，固定管理模式下也可使用。
 
 自带配置的插件把配置渲染在本页而不是设置里，通过本页声明的三个 slot：`plugins.item`（list）用于官方插件，按其 `label` 列在内置插件配置分组里；`plugins.bundle.config`（以组合包的包名为键）用于组合包自己的配置，显示在组合包页面的描述与行之间；`plugins.row.config`（以 `<包名>#<行 id>` 为键）用于某一行的配置，这一行由此多出一个**配置**控件，打开该行自己的页面。页面用 `view: 'page'` 渲染带自己保存控件的表单。官方插件卡片还在标题下渲染 `view: 'summary'`；行详情页只在缺少包描述时使用该视图。只有保存才写入：页面负责画标题、图标与面包屑，条目的表单在离开页面时丢弃暂存的修改。安装随附的四个宿主平面配置页——shell 执行器、agent loop、子智能体、DeepSeek 搜索提供方——各来自一个伴生包：[ui-settings-shell](../ui-settings-shell/README.zh.md)、[ui-settings-agent-loop](../ui-settings-agent-loop/README.zh.md)、[ui-settings-subagent](../ui-settings-subagent/README.zh.md) 与 [ui-settings-web-search](../ui-settings-web-search/README.zh.md)，在 Host 服务其命名空间期间注册。组合包的浏览器半侧用同样的方式注册：
 

@@ -27,6 +27,7 @@ import { ConversationMainPanel } from '../src/client/skeleton/ConversationMainPa
 import { ConversationSession, ConversationSessionHeader } from '../src/client/skeleton/ConversationSession.tsx'
 import { conversationPhase } from '../src/client/contract/snapshot.ts'
 import { HeroShell } from '../src/client/skeleton/EmptyHero.tsx'
+import { ConversationAppearanceSchema, type ConversationAppearance } from '../src/appearance.ts'
 import './control-row-dom.ts'
 import { InputBar } from '../src/client/skeleton/InputBar.tsx'
 import type { InputBarProps } from '../src/client/skeleton/InputBar.tsx'
@@ -124,7 +125,7 @@ function sessionSnapshotOf(overrides: Partial<SessionSnapshot> = {}): SessionSna
 function mount(
   snapshot: SessionSnapshot,
   workspaceRows: WorkspaceView[] = [{ ...workspace('one'), sessionIds: [SID] }],
-  retargetWorkspace = vi.fn(async (_workspaceId: WorkspaceId) => {}),
+  retargetWorkspace = vi.fn<ConversationContentProps['selectWorkspace']>(async () => undefined),
   options: {
     /** Explicit undefined exercises the shell before a Session is selected. */
     sessionId?: SessionId | undefined
@@ -132,6 +133,7 @@ function mount(
     overlayTakeover?: boolean
     /** The session list summary's `blank` flag — independent of the snapshot's. */
     summaryBlank?: boolean
+    appearance?: ConversationAppearance
     /** Drop the session's summary row entirely (a session the list has not caught up with). */
     omitSummaryRow?: boolean
     /** Classify the selected child as a subagent instead of an ordinary fork. */
@@ -378,6 +380,7 @@ function mount(
       renderSlotChain,
       renderFactorySlot,
       selectWorkspace: retargetWorkspace,
+      useAppearance: bindSnapshotSelector(createSnapshotStore(ConversationAppearanceSchema(options.appearance ?? {}))),
       t,
     }
     const useFactorySlot = ((name: string, fallback: (props: never) => ReactNode) => (
@@ -891,8 +894,11 @@ describe('ConversationRoot resident composer', () => {
     expect(more.getAttribute('aria-expanded')).toBe('false')
   })
 
-  it('rolls the pending workspace label back when switching fails', async () => {
-    const selectWorkspace = vi.fn(async () => { throw new Error('connect failed') })
+  it.each(['fails', 'redirects'] as const)('restores the actual workspace label when switching %s', async (outcome) => {
+    const selectWorkspace = vi.fn(async () => {
+      if (outcome === 'fails') throw new Error('connect failed')
+      return 'entrance' as const
+    })
     const b = mount(
       sessionSnapshotOf({ blank: true }),
       [
@@ -909,7 +915,7 @@ describe('ConversationRoot resident composer', () => {
     expect(b.view.getByText('one')).toBeTruthy()
   })
 
-  it('blank session keeps the interactive picker chip (workspace switchable until the first message)', () => {
+  it('applies profile hero presentation and plain placeholders while preserving default controls', () => {
     const b = mount(sessionSnapshotOf({ blank: true }))
     const chip = b.view.getByRole('button', { name: '选择工作区' })
     expect((chip as HTMLButtonElement).disabled).toBe(false)
@@ -918,6 +924,19 @@ describe('ConversationRoot resident composer', () => {
     // choices are only open before the first message.
     expect(b.slotCalls).toContain('conversation.hero.agentPreset')
     expect(b.slotCalls).toContain('conversation.hero.options')
+    expect(b.view.getByText(zh['hero.preview'])).toBeTruthy()
+    b.view.unmount()
+    const plain = mount(sessionSnapshotOf({ blank: true }), undefined, undefined, { appearance: {
+      showWorkspacePicker: false, heroTitle: 'Vardock', showHeroBadge: false, plainPlaceholder: true,
+    } })
+    expect(plain.view.getByText('Vardock')).toBeTruthy()
+    expect(plain.view.queryByText(zh['hero.preview'])).toBeNull()
+    expect(plain.view.queryByRole('button', { name: '选择工作区' })).toBeNull()
+    expect(plain.slotCalls).not.toContain('conversation.hero.workspace')
+    expect(plain.view.getByRole('textbox').getAttribute('data-placeholder')).toBe(zh['placeholder.plain'])
+    act(() => { plain.session.set(sessionSnapshotOf({ blank: false })) })
+    plain.rerender()
+    expect(plain.view.getByRole('textbox').getAttribute('data-placeholder')).toBe(zh['placeholder.plain'])
   })
 
   it('seats the New Session options after the agent-preset chip, and only for a Session', () => {

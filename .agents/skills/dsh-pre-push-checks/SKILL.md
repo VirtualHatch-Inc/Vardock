@@ -5,7 +5,7 @@ description: Use before pushing, force-pushing, marking ready for review, or cla
 
 # DSH Pre-Push Checks
 
-Use this skill to run relevant local evidence once before a `deepseek-harness` push. The sole ordering exception is `gh stack sync`, which may publish a cascading rebase before the rewritten layers can be validated; validate them immediately afterward and do not merge until the evidence passes. Git hooks are intentionally narrow: pre-commit fixes staged lint, checks staged whitespace, and guards vendored-source metadata; pre-push runs only the incremental repository typecheck. CI owns exhaustive coverage and the platform matrix.
+Use this skill to run relevant local evidence once before a `deepseek-harness` push. The sole ordering exception is `gh stack sync`, which may publish a cascading rebase before the rewritten layers can be validated; validate them immediately afterward and do not merge until the evidence passes. Git hooks are intentionally narrow: pre-commit fixes staged lint, checks staged whitespace, and guards vendored-source metadata; pre-push runs only the incremental repository typecheck. The repository runs no CI; exhaustive coverage and other platforms run locally only when the user requests them.
 
 ## Inspect the outgoing change
 
@@ -28,9 +28,9 @@ The command never guesses or fetches a base. Supply the ref verified from curren
 
 There is no universal local baseline beyond the hooks. Every behavior change needs the narrowest available test or purpose-built check that would fail for its regression; add broader checks only for surfaces the diff actually reaches.
 
-When the outgoing change adds or changes a resource-owning or asynchronous test, fixture, helper, or CI execution path, use [dsh-ci-test-reliability](../dsh-ci-test-reliability/SKILL.md) first to decide whether restoration, negative-control, quiescent-teardown, or concurrent-process evidence applies. This skill still selects the commands and avoids repeating evidence that already passed.
+When the outgoing change adds or changes a resource-owning or asynchronous test, fixture, helper, or gate execution path, use [dsh-ci-test-reliability](../dsh-ci-test-reliability/SKILL.md) first to decide whether restoration, negative-control, quiescent-teardown, or concurrent-process evidence applies. This skill still selects the commands and avoids repeating evidence that already passed.
 
-- **Package or script behavior:** run the owning Vitest file or focused test name. Add adjacent package tests when a shared contract changes; leave repository-wide coverage to CI unless the change is genuinely cross-cutting or the user requests it.
+- **Package or script behavior:** run the owning Vitest file or focused test name. Add adjacent package tests when a shared contract changes; run repository-wide coverage (`pnpm run test:coverage`) only when the change is genuinely cross-cutting or the user requests it.
 - **Remote mock typing:** unbuilt `any` is an explicit local fallback, not strict evidence. Run `pnpm run typecheck` before handing off Remote/mock changes; rebuild missing, stale, or partial generated declarations before diagnosing remaining errors. Keep the exception in the [test proxy](../../../packages/test-support/remote-mock/README.md#remote-proxy), never in production Remote types, ambient flags, or copied signatures.
 - **Documentation, Agent Notes, catalogs, or doc-linked comments:** run `pnpm run doc-sync`; run full lint when the documentation workflow requires it.
 - **User-visible UI:** use the [UI change workflow](../dsh-client-ui-ux/SKILL.md#required-review-loop) and its [minimum checks](../dsh-client-ui-ux/SKILL.md#minimum-checks-for-affected-ui) to verify required inspection and new cumulative effects. Disclose missing checks; optional paperwork is not a substitute for inspecting the result. Reuse valid evidence; ordinary changes do not need a separate full-audit report at push time. Keep existing test, GUI GIF and designer/product approval requirements. Tests alone do not establish visual acceptance.
@@ -76,7 +76,7 @@ pnpm exec vitest related packages/<group>/<package>/src/<changed>.ts \
 
 ## Full local rehearsal
 
-Run the complete local approximation only when the user explicitly requests it, while diagnosing a CI failure, or when the change spans the repository so broadly that no narrower set is credible. Use the current workflow and package scripts as the inventory; do not recreate the removed `check:pre-push` aggregate.
+Run the complete gate set only when the user explicitly requests it or when the change spans the repository so broadly that no narrower set is credible. Use `pnpm run check:all` and the package scripts as the inventory; do not recreate the removed `check:pre-push` aggregate.
 
 ## Protect history-rewriting pushes
 
@@ -97,14 +97,14 @@ If post-sync evidence fails, leave the lease-protected published heads in place,
 
 ## Handle failures
 
-If a relevant check fails before an ordinary push, stop and fix or explain the blocker. Do not push and hope CI differs. For the post-sync exception, block the merge and follow the repair procedure above.
+If a relevant check fails before an ordinary push, stop and fix or explain the blocker. Do not push a change whose relevant check fails. For the post-sync exception, block the merge and follow the repair procedure above.
 
 If a failure looks environment-specific, prove it:
 
 - Record the exact command, failing test, and platform-specific mismatch.
 - Confirm the relevant non-platform evidence.
 - Prefer fixing cross-platform nondeterminism when the check is required.
-- Bypass a local hook only when the user explicitly asks or agrees, and report exactly what failed and why CI is expected to differ.
+- Bypass a local hook only when the user explicitly asks or agrees, and report exactly what failed and why another environment is expected to differ.
 
 ## Push procedure
 
@@ -118,21 +118,5 @@ For ordinary and standalone rebase pushes:
 ```sh
 git rev-parse HEAD origin/$(git branch --show-current)
 ```
-
-For GitHub PRs, inspect remote CI after the push:
-
-```sh
-gh pr checks
-```
-
-Report pending checks as pending. Inspect failures before attributing them to the branch or the environment.
-
-When `gh pr checks` reports "no checks reported" and `/actions/runs?head_sha=<sha>` returns `total_count: 0`, read mergeability before suspecting the push or a dropped GitHub event:
-
-```sh
-gh pr view <number> --json mergeable,mergeStateStatus
-```
-
-GitHub creates no `pull_request` workflow runs while a PR is `CONFLICTING`/`DIRTY`, so the absent signal is the conflict, not infrastructure. Resolving the conflict is the only fix; empty commits, `--allow-empty` pushes, draft/ready toggles, and revert-and-restore bounces all leave `total_count` at zero and add junk history. Confirm the conflicting paths with `git merge-tree --write-tree HEAD origin/<base>` when the branch cannot be merged locally yet.
 
 For `gh stack sync`, use the post-sync validation sequence instead of pretending the ordinary order was possible.

@@ -1,5 +1,6 @@
 /** Target-neutral Conversation slot declarations and composed component props. */
 import type { ReactNode, RefObject } from 'react'
+import type { ConversationAppearance } from '../../appearance.ts'
 import type { FileAttachmentRef, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { SessionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { FileUploadReceiptId } from '@deepseek-ai/dsh-client-file-upload/client'
@@ -303,6 +304,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * because the docked composer contains them.
      */
     'conversation.input.dock': { kind: 'list'; scope: 'session'; owner: InputZone }
+    /** Session status entries above the composer, including during a temporary takeover. */
+    'conversation.input.status': { kind: 'list'; scope: 'session'; owner: InputZone }
     /**
      * Floating entries rendered inside the resident composer card; fixed overlays must portal to
      * the document body because the docked composer contains them.
@@ -372,6 +375,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
         'conversation.composer': { kind: 'chain'; scope: 'session' }
         'conversation.composer.bar': { kind: 'single'; scope: 'session-maybe' }
         'conversation.input.dock': { kind: 'list'; scope: 'session' }
+        'conversation.input.status': { kind: 'list'; scope: 'session' }
         'conversation.hero.frame': { kind: 'hoc'; scope: 'root' }
         'conversation.hero.brand.mark': { kind: 'single'; scope: 'root' }
         'conversation.hero.workspace': { kind: 'single'; scope: 'root' }
@@ -468,10 +472,18 @@ export type ConvViewProps = PropsRuntime<'conversation.view'>
 
 /** Business callbacks injected into the resident Conversation shell. */
 export interface ConversationInjected {
-  /** Connect and open a blank Session in the selected Workspace. */
-  selectWorkspace: (workspaceId: WorkspaceId) => Promise<void>
+  /**
+   * Open the Workspace conversation or its replacement entrance.
+   * @param workspaceId - Workspace selected in the picker.
+   * @returns `entrance` when the selection was redirected.
+   */
+  selectWorkspace: (workspaceId: WorkspaceId) => Promise<void | 'entrance'>
   /** Session-addressed composer block source, or the stable absent source. */
-  hooks: { composerBlock: ObservableSnapshot<ComposerBlock | undefined> }
+  hooks: {
+    /** Host-selected composer and hero presentation. */
+    appearance: ObservableSnapshot<ConversationAppearance>
+    composerBlock: ObservableSnapshot<ComposerBlock | undefined>
+  }
 }
 
 /** Business callbacks injected into the strict Session body. */
@@ -588,12 +600,13 @@ export interface ComposerBarInjected {
   /** Document paste routing across mounted composers. */
   registerFileIntake: ComposerFileIntake
   keyboard: ComposerKeyboard | undefined
+  /** Read the ordinary Session's attachment policy before applying image intake limits. */
+  usesVerbatimAttachments?: () => boolean
   /**
    * Register one picked batch; resolves to the rejection copy or null. Where
    * the browser shell reports host paths (the Desktop application), files
-   * and folders with a real path become `@path` references in the draft
-   * instead of uploads; `directories` names the members the drop source
-   * identified as directories.
+   * and folders with a real path can become `@path` references in the draft.
+   * `directories` names the members the drop source identified as directories.
    */
   addFiles: ((files: readonly File[], directories?: ReadonlySet<File>) => string | null) | undefined
   removeAttachment: ((id: DraftAttachmentId) => void) | undefined

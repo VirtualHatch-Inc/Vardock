@@ -37,6 +37,12 @@ kind: "package-group"
 | 包 | 职责 | ctx 键 |
 |---|---|---|
 | [`action-cards`](action-cards/README.zh.md) | 回答下方的可选操作卡片：提议工具、卡片状态、用户操作与状态通知 | `ctx.actionCards` |
+| [`assistant`](assistant/README.zh.md) | 通过一个 Assistant 会话委派后台工作并取回已保存的报告 | `ctx.assistant` |
+| [`execution-container`](execution-container/README.zh.md) | 隔离的 shell 执行，每个会话拥有持久工作区 | — |
+| [`operation-broker`](operation-broker/README.zh.md) | 使用授权服务保管的凭据执行获批的 HTTPS JSON 操作 | — |
+| [`operation-control`](operation-control/README.zh.md) | 通过独立本地服务授权并记录隔离执行 | — |
+| [`operation-evidence`](operation-evidence/README.zh.md) | 在独立服务账户下保全不可变的执行证据 | — |
+| [`llm-codex`](llm-codex/README.zh.md) | 通过本地 Codex CLI 登录发起模型请求 | 在 `ctx.llm` 注册提供方 |
 | [`client-ui-action-cards`](client-ui-action-cards/README.zh.md) | 已完成回答下方的卡片框架、种类正文与提议过程行 | — |
 | [`creation-recommendations`](creation-recommendations/README.zh.md) | 针对明确需求创建持续可用、可移除的界面插件 | — |
 | [`client-ui-creation-recommendations`](client-ui-creation-recommendations/README.zh.md) | 个性化页面卡片正文、位置选择和撤销 | — |

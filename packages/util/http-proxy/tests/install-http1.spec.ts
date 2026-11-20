@@ -130,6 +130,26 @@ describe('HTTP/2 is opt-out, not the default', () => {
     }
   })
 
+  it('keeps destination CA trust on direct and proxied routes without changing proxy trust', async () => {
+    const proxied = await createRouteDispatcher(env({ HTTPS_PROXY: 'http://127.0.0.1:9' }), { ca: 'destination-ca' })
+    try {
+      const factory = lastOf('Agent')?.options.factory as (origin: string, options: Record<string, unknown>) => unknown
+      factory('https://service.test', {})
+      expect(lastOf('ProxyAgent')?.options.requestTls).toEqual({ ca: 'destination-ca', rejectUnauthorized: true })
+      expect(lastOf('ProxyAgent')?.options.proxyTls).toBeUndefined()
+      factory('https://127.0.0.1', {})
+      expect(lastOf('Pool')?.options.connect).toEqual({ ca: 'destination-ca', rejectUnauthorized: true })
+    } finally {
+      await proxied.close()
+    }
+    const direct = await createRouteDispatcher(env({}), { ca: 'destination-ca' })
+    try {
+      expect(lastOf('Agent')?.options.connect).toEqual({ ca: 'destination-ca', rejectUnauthorized: true })
+    } finally {
+      await direct.close()
+    }
+  })
+
   it('pins the direct dispatcher of a policy layered over an installed proxy', async () => {
     const disposeOuter = await installProxyFromEnvironment(env({ HTTP_PROXY: 'http://127.0.0.1:9' }), () => undefined)
     try {

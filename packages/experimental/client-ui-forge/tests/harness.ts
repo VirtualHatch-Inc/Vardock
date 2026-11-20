@@ -403,6 +403,9 @@ export function testAgent(ctx: Context, session: Session): TestAgent {
       agentEvents(ctx, agent).emit('agent/inbox/inserted', { message })
       if (wakeup) wake()
     },
+    wake() {
+      if (inbox.nextTurn.length > 0 || inbox.nextStep.length > 0) wake()
+    },
     followup(message) { agent.send(message, 'next-turn', true) },
     steer(message) { agent.send(message, 'next-step', true) },
     inject(message) { agent.send(message, 'next-step', false) },

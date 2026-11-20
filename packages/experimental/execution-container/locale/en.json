@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Isolated execution",
+    "description": "Run Session scripts in an isolated Docker or Apple VM workspace."
+  }
+}

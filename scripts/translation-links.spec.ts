@@ -143,6 +143,18 @@ describe('translation link locale validation', () => {
     )).toEqual([])
   })
 
+  it('accepts a Japanese link between English and Chinese without exempting body links', () => {
+    const root = fixture()
+    for (const [source, target, switcher] of [
+      ['docs/guide.md', 'guide.zh.md', 'English | [日本語](guide.ja.md) | [中文](guide.zh.md)'],
+      ['docs/guide.zh.md', 'guide.md', '[English](guide.md) | [日本語](guide.ja.md) | 中文'],
+    ] as const) {
+      const markdown = `# Guide\n\n${switcher}\n\n[Body](${target})\n`
+      expect(translationLinkLocaleViolations(markdown, linkContext(root, source), [target]))
+        .toEqual([{ sourcePath: source, line: 5, url: target, expectedUrl: source.split('/').at(-1) }])
+    }
+  })
+
   it('does not exempt an ordinary body link to the counterpart', () => {
     const root = fixture()
     const markdown = '# 指南\n\n[English](guide.md) | 中文\n\n[正文](guide.md)\n'

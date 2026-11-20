@@ -4,7 +4,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, onTestFinished } from 'vitest'
 import * as HostPlugin from '../src/index.ts'
 import { liveConfig, omitsGeneratedPage } from '../../../settings/settings/tests/live-config.ts'
-import { plainConfig } from '../../../settings/settings/src/schema.ts'
+import { volatileForm, plainConfig } from '../../../settings/settings/src/schema.ts'
 import {
   DEFAULT_BUSY_ENTER_BEHAVIOR,
 } from '@deepseek-ai/dsh-client-ui-conversation'
@@ -17,10 +17,17 @@ describe('ui-conversation host', () => {
     await ctx.plugin(SessionStore)
     await ctx.plugin(SessionProjectionRegistry)
     const configuration = await liveConfig(ctx, HostPlugin)
+    expect(Object.keys(volatileForm(HostPlugin.Config)?.dict ?? {})).toEqual(expect.arrayContaining([
+      'showWorkspacePicker', 'heroTitle', 'showHeroBadge', 'plainPlaceholder',
+    ]))
     const { fiber } = configuration
-    expect(plainConfig(configuration.fiber.effectiveConfig)).toEqual({ busyEnter: DEFAULT_BUSY_ENTER_BEHAVIOR })
+    expect(plainConfig(configuration.fiber.effectiveConfig)).toEqual({
+      busyEnter: DEFAULT_BUSY_ENTER_BEHAVIOR, showWorkspacePicker: true, showHeroBadge: true, plainPlaceholder: false,
+    })
     await configuration.update({ busyEnter: 'steer' })
-    expect(plainConfig(configuration.fiber.effectiveConfig)).toEqual({ busyEnter: 'steer' })
+    expect(plainConfig(configuration.fiber.effectiveConfig)).toEqual({
+      busyEnter: 'steer', showWorkspacePicker: true, showHeroBadge: true, plainPlaceholder: false,
+    })
     await expect(configuration.update({ busyEnter: 'invalid' })).rejects.toThrow()
     await fiber.dispose()
   })

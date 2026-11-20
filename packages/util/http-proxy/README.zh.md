@@ -42,6 +42,8 @@ kind: "package-reference"
 
 `proxyRouteFor` 给出的不只是答案，还有该答案所假定的传输：走代理的那一支携带着此刻正按该策略路由的 dispatcher。若调用方先读策略、再自建传输，卸载就可能落在两次读取之间，把请求发往其分支从未放行的去处。
 
+对于特定目标的信任根，将 `ca` 传给 `createRouteDispatcher`，并仅将该 dispatcher 用于该目标。CA 配置目标的 TLS，包括经代理建立的连接；它不改变代理自身的 TLS 信任根。目标证书验证保持启用。请求结束后关闭 dispatcher。
+
 构造 `new Agent(...)` 再作为 `dispatcher` 传入会覆盖全局 dispatcher，从而静默绕开代理。`verify-no-bare-dispatcher` 会在本包之外拒绝该写法。确实自有传输的调用点（因为它携带进程级 dispatcher 无法承载的单次请求状态）要在该行用 `proxy-exempt:` 注释说明。
 
 该门禁看不进 SDK 内部，因此每个出网点都配有 `egress.spec.ts`，通过假代理驱动实际传输并检查观察到的路由。每个新的出网点必须包含该传输测试。遥测断言其直连例外。这些测试可发现调用点不变但依赖变更改变路由的情况。

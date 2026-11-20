@@ -531,6 +531,29 @@ describe('Conversation inject API', () => {
     await b.runtime.dispose()
   })
 
+  it('stages an empty draft through the regular upload queue for later submission', async (test) => {
+    const b = await bench()
+    test.onTestFinished(() => b.runtime.dispose())
+    const scoped = b.runtime.sessions.scope(ROOT)!
+    const conversation = scoped.get('conversation')!
+    const { state, actions } = b.inputApi(ROOT)
+    const file = new File(['region,orders\nWest,15\n'], 'sample.csv', { type: 'text/csv' })
+    actions.setDraft('Unsent user text')
+    expect(conversation.prepareEmptyDraft('Summarize the file', [file])).toBe(false)
+    expect(state.getSnapshot().draft).toBe('Unsent user text')
+    expect(b.rootUpload).not.toHaveBeenCalled()
+    actions.setDraft('')
+    expect(conversation.prepareEmptyDraft('Summarize the file', [file])).toBe(true)
+    const staged = state.getSnapshot()
+    expect(staged.draft).toBe('Summarize the file')
+    expect(b.composerApi(ROOT).resolveDraftAttachments?.(staged.attachmentIds).map(attachment => attachment.file))
+      .toEqual([file])
+    await vi.waitFor(() => {
+      expect(b.rootUpload).toHaveBeenCalledExactlyOnceWith(file, 'sample.csv', expect.any(AbortSignal), expect.any(Function))
+    })
+    expect(b.sessionFake.prompt).not.toHaveBeenCalled()
+  })
+
   it('releases a draft attachment only after the input shell accepts its removal', async () => {
     const b = await bench()
     const composer = b.composerApi(ROOT)

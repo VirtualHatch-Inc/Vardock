@@ -1716,6 +1716,23 @@ describe('model-switch pressure', () => {
       .toHaveLength(1)
   })
 
+  it('switches to a model that declines compaction without summarizing', async () => {
+    const { ctx, adapter } = harness()
+    const session = conversation(4, 'fixture '.repeat(80))
+    const before = session.snapshotEvents()
+    const selected = { provider: 'small', model: 'small' }
+    vi.spyOn(ctx.llm, 'resolveModelInfo').mockResolvedValueOnce({
+      provider: selected.provider, id: selected.model, name: 'Small',
+      context: { contextWindow: 1_000 }, compaction: 'unsupported',
+    })
+    expect(ctx.tokenMeter.measure(session).totalTokens).toBeGreaterThan(1_000)
+
+    await expect(request(ctx, session, selected)).resolves.toEqual(selected)
+
+    expect(adapter.lastOptions).toBeUndefined()
+    expect(session.snapshotEvents()).toEqual(before)
+  })
+
   it('uses the proposed output reservation and the destination retention policy', async () => {
     const { ctx, adapter } = harness({
       modelPolicies: [{ provider: 'small', model: 'small', retainTokens: 0 }],
@@ -1952,6 +1969,29 @@ describe('automatic listener and loader composition', () => {
     await preStep(ctx, agent(small, MODEL))
     expect(small.snapshotEvents().some(event => event.type === 'compaction/start')).toBe(false)
     expect(compact.calls).toHaveLength(1)
+  })
+
+  it('leaves pressured and overflowing history intact when the model declines compaction', async () => {
+    const ctx = createContext()
+    onTestFinished(() => ctx.fiber.dispose())
+    vi.spyOn(ctx.llm, 'resolveModelInfo').mockResolvedValue({
+      provider: MODEL, id: MODEL, name: MODEL,
+      context: { contextWindow: 1_000 }, compaction: 'unsupported',
+    })
+    const pruner = new ToolResultPruner(ctx, { thresholdChars: 100, headChars: 20, tailChars: 10 })
+    const pruneSession = vi.spyOn(pruner, 'pruneSession')
+    const compact = service({ thresholdRatio: 0.5, retainTokens: 100 }, ctx)
+    const session = toolConversation()
+    const owner = agent(session, MODEL)
+    const before = session.snapshotEvents()
+    expect(ctx.tokenMeter.measure(session).totalTokens).toBeGreaterThan(1_000)
+
+    await expect(preStep(ctx, owner)).resolves.toMatchObject({ kind: 'enter' })
+    await expect(recover(ctx, owner, overflow())).resolves.toBe(false)
+
+    expect(pruneSession).not.toHaveBeenCalled()
+    expect(compact.calls).toHaveLength(0)
+    expect(session.snapshotEvents()).toEqual(before)
   })
 
   it('skips pre-step pressure when the step signal is already aborted', async () => {

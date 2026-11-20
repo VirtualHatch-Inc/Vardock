@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-11-10-assistant-artifact-metadata.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-11-10-assistant-artifact-metadata.md
+/:
+  en: 3d5a424ae7d7e46b
+  zh: c22a8e4a62d8cc1a
+/2026-11-10-assistant-artifact-metadata:
+  en: fc9f8bba3dc6af47
+  zh: d564d3fddc553420
+/2026-11-10-assistant-artifact-metadata/summary:
+  en: 1d81a263ef7d0ce2
+  zh: 4541af4908ba9b3c
+/2026-11-10-assistant-artifact-metadata/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-11-10-assistant-artifact-metadata/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-11-10-assistant-artifact-metadata/compatibility:
+  en: ec4ba4a2985cb6ac
+  zh: 080e5a14e17b3a04
+/2026-11-10-assistant-artifact-metadata/verification:
+  en: 6c4aeb88530e48b7
+  zh: a2a4d2038333997f
+/2026-11-10-assistant-artifact-metadata/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

@@ -300,6 +300,11 @@ export class BasicCompactionEngine extends CompactionEngine {
       case 'pressure':
         return this.compactPressure(agent, header, signal, false)
       case 'context-overflow': {
+        // Explicit summarizers can recover historical routes whose adapter is no longer installed.
+        if (this.ctx.llm.listProviders().some(provider => provider.id === header.config.provider)) {
+          const info = await this.ctx.llm.resolveModelInfo(header.config.provider, header.config.model, signal)
+          if (info.compaction === 'unsupported') return null
+        }
         this.ctx.get('toolResultPruner')?.pruneSession(agent.session)
         const measurement = this.ctx.tokenMeter.measure(agent.session)
         const range = selectCompactableRange(agent.session, measurement, 0)
@@ -325,6 +330,7 @@ export class BasicCompactionEngine extends CompactionEngine {
     let measurement = meter.measure(agent.session, header)
     const prune = this.ctx.get('toolResultPruner')
     const info = await this.ctx.llm.resolveModelInfo(target.provider, target.model, signal)
+    if (info.compaction === 'unsupported') return null
     assertNoActiveCompaction(agent.session, 'automatic pressure compaction')
     const targetKey = `${target.provider}/${target.model}`
     if (info.context === undefined) {
@@ -415,6 +421,13 @@ export class BasicCompactionEngine extends CompactionEngine {
         const operationSignal = AbortSignal.any([agentSignal, signal])
         try {
           operationSignal.throwIfAborted()
+          const target = conversationTarget(agent)
+          if (target !== undefined && this.ctx.llm.listProviders().some(provider => provider.id === target.provider)) {
+            const info = await this.ctx.llm.resolveModelInfo(target.provider, target.model, operationSignal)
+            if (info.compaction === 'unsupported') {
+              throw new ManualCompactionError('unsupported', 'the selected model does not support Harness summary compaction')
+            }
+          }
           const range = selectCompactableRange(
             agent.session,
             this.ctx.tokenMeter.measure(agent.session),

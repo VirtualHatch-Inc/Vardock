@@ -4,7 +4,7 @@ import type {} from '@deepseek-ai/dsh-settings'
 import type { Volatile, Context } from '@deepseek-ai/cordis'
 import type { BusyEnterBehavior } from './submission-settings.ts'
 import z from '@deepseek-ai/schemastery'
-import { BUSY_ENTER_FIELD } from './submission-settings.ts'
+import { ConversationAppearanceFields } from './appearance.ts'
 
 import { ConversationSettingsFields } from './submission-settings.ts'
 
@@ -17,11 +17,23 @@ export {
 export interface Config {
   /** Enter key behavior while a turn is running. */
   busyEnter: Volatile<BusyEnterBehavior>
+  /** Show the workspace chip and popup above the empty composer. */
+  showWorkspacePicker: Volatile<boolean>
+  /** Product name replacing the localized hero headline. */
+  heroTitle?: Volatile<string>
+  /** Show the preview badge beside the hero title. */
+  showHeroBadge: Volatile<boolean>
+  /** Use the plain localized message placeholder. */
+  plainPlaceholder: Volatile<boolean>
 }
 
 /** Live preferences projected to the browser. */
 export const Config = z.object({
-  [BUSY_ENTER_FIELD]: ConversationSettingsFields[BUSY_ENTER_FIELD].volatile(),
+  showWorkspacePicker: ConversationAppearanceFields.showWorkspacePicker.volatile(),
+  heroTitle: ConversationAppearanceFields.heroTitle.volatile(),
+  showHeroBadge: ConversationAppearanceFields.showHeroBadge.volatile(),
+  plainPlaceholder: ConversationAppearanceFields.plainPlaceholder.volatile(),
+  busyEnter: ConversationSettingsFields.busyEnter.volatile(),
 })
 
 /** Register browser conversation preferences.

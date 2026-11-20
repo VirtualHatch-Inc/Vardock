@@ -53,9 +53,10 @@ await handle.dispose()   // stops the loop, unregisters, removes the session, un
 
 要启用作用域内的切换提示，在 Agent setup 中调用 `dsh-agent` 的 `installModelSelection(agentCtx)`。作用域拥有监听器，并在释放时移除它。
 
+<a id="drive-an-agents-conversation"></a>
 ### 驱动 agent 的对话
 
-句柄的方法把带标识的 user 角色消息路由进 agent 的收件箱。`followup()` 排队一条普通的下一个轮次提示词并唤醒驱动器；`steer()` 提交下一步输入并唤醒它；`inject()` 添加面向模型的上下文但不唤醒驱动器，因此它落在下一个被接纳的步骤中。`cancel(cause)` 中止当前活动，并在未设置 `keepInbox` 时清除待处理工作；`whenIdle()` 会在整个 agent 达到完全停稳后完成。取消期间的队列写入失败仍会中止当前工作，并把错误传给调用方。
+句柄的方法把带标识的 user 角色消息路由进 agent 的收件箱。`followup()` 排队一条普通的下一个轮次提示词并唤醒驱动器；`steer()` 提交下一步输入并唤醒它；`inject()` 添加面向模型的上下文但不唤醒驱动器，因此它落在下一个被接纳的步骤中。调用 `send(message, target, false)` 可先将输入加入队列，再调用 `wake()` 启动空闲的驱动器。若要在处理前持久化输入，请让驱动器保持空闲或处于维护阶段，直到 `ctx.sessions.flush(agent.session)` 返回 `true`。`cancel(cause)` 中止当前活动，并在未设置 `keepInbox` 时清除待处理工作；`whenIdle()` 会在整个 agent 达到完全停稳后完成。取消期间的队列写入失败仍会中止当前工作，并把错误传给调用方。
 
 ```text
 handle.agent.followup({

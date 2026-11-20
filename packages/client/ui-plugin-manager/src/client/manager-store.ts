@@ -389,6 +389,8 @@ export interface UpdateState {
 
 /** What the tab renders. */
 export interface PluginManagerState {
+  /** Host policy; changes are not offered until the first successful read. */
+  readonly management: 'full' | 'fixed'
   /** `unavailable` when the Host runs without a managed profile; `error` keeps the last packages. */
   readonly status: 'idle' | 'loading' | 'ready' | 'error' | 'unavailable'
   /**
@@ -702,6 +704,7 @@ export class PluginManagerController {
   ) {
     this.details = new BundleDetailController(ctx, () => document.baseURI)
     this.store = createSnapshotStore<PluginManagerState>({
+      management: 'fixed',
       status: 'idle', refreshStatus: 'idle', packages: [], busy: [], notice: null,
       install: IDLE_INSTALL, confirm: null, highlight: null, versions: {}, update: null,
     })
@@ -1127,18 +1130,20 @@ export class PluginManagerController {
           this.patch({ status: 'unavailable', packages: [] })
           continue
         }
-        const [bundles, plugins] = await Promise.all([
+        const [bundles, plugins, management] = await Promise.all([
           this.ctx.remote.pluginManager.listBundles(),
           this.ctx.remote.pluginManager.listPlugins(),
+          this.ctx.remote.pluginManager.management(),
         ])
         if (generation !== this.generation) return
-        if (!bundles.ok || !plugins.ok) {
+        if (!bundles.ok || !plugins.ok || !management.ok) {
           this.patch({ status: 'error' })
           continue
         }
         this.hasCachedInventory = true
         this.patch({
           status: 'ready',
+          management: management.value,
           refreshStatus: this.getSnapshot().refreshStatus === 'refreshing' ? 'refreshing' : 'idle',
           packages: sortPackages(bundles.value.map(bundle => packageView(bundle, plugins.value))),
         })

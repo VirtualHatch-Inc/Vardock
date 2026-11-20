@@ -33,6 +33,7 @@ function stubAgent(ctx: Context, id: string): { agent: Agent; session: Session }
     ctx: new Context(),
     get status() { return status },
     send: () => {},
+    wake: () => {},
     followup: () => {},
     steer: () => {},
     inject(input) { this.inbox.append('next-step', input) },

@@ -60,6 +60,30 @@ describe('JsonRpcLineTransport', () => {
     b.close()
   })
 
+  it.each([true, false])('suppresses replies after closure (handler succeeds: %s)', async (succeeds) => {
+    const { a, b, bToA } = transportPair()
+    const entered = Promise.withResolvers<undefined>()
+    const result = Promise.withResolvers<unknown>()
+    const writes: Buffer[] = []
+    bToA.on('data', (data: Buffer) => writes.push(data))
+    b.onRequest(() => {
+      entered.resolve(undefined)
+      return result.promise
+    })
+    a.start()
+    b.start()
+    const request = a.request('deferred', {})
+    const settled = expect(request).rejects.toThrow('JSON-RPC transport closed')
+    await entered.promise
+    b.close()
+    if (succeeds) result.resolve({ accepted: true })
+    else result.reject(new Error('handler failed'))
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(writes).toEqual([])
+    a.close()
+    await settled
+  })
+
   it('rejects immediately on a pre-aborted signal without registering pending state', async () => {
     const { b } = transportPair()
     b.start()

@@ -1,0 +1,79 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/assistant/README.md
+/:
+  en: 50ecb4e4da5a14c2
+  zh: 1692362d814cb66e
+/deepseek-ai-dsh-assistant:
+  en: df07ac605f0547ea
+  zh: 93136433bc7bf1b1
+/deepseek-ai-dsh-assistant/summary:
+  en: 25ee035d1d182754
+  zh: 70eabebde215dfa7
+/deepseek-ai-dsh-assistant/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 0c6cfa37161ccef7
+/deepseek-ai-dsh-assistant/use-this-package:
+  en: 3e4a332261a515bb
+  zh: fba68aaf0a60162e
+/deepseek-ai-dsh-assistant/understand-the-implementation:
+  en: 79715bdc6fc90196
+  zh: 3ee8d2a963cf89b2
+/deepseek-ai-dsh-assistant/further-exploration:
+  en: 7aad6eb3795d5f9b
+  zh: 3fa67a07165e6905
+/deepseek-ai-dsh-assistant/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-assistant/model-experience/delegation-tool-schemas:
+  en: 0f67c6290ed9c9f1
+  zh: cb9e588eec3367d4
+/deepseek-ai-dsh-assistant/model-experience/delegation-tool-schemas/what-the-model-sees:
+  en: a1ae558418649e05
+  zh: dd141f436f42c61d
+/deepseek-ai-dsh-assistant/model-experience/delegation-tool-schemas/what-the-model-sees/assistant-entrance-instruction:
+  en: 926777c5f6cc8d53
+  zh: 73661f6ad975335d
+/deepseek-ai-dsh-assistant/model-experience/delegation-tool-schemas/token-effect:
+  en: 437b54d0f84f7197
+  zh: a8e39125378960f1
+/deepseek-ai-dsh-assistant/model-experience/delegation-tool-schemas/kv-cache-effect:
+  en: 6bbc1befc13934ad
+  zh: 184152120fd076f4
+/deepseek-ai-dsh-assistant/model-experience/work-request-and-report:
+  en: 2b665b0c86814ff9
+  zh: 7cef0f1f4a3090a2
+/deepseek-ai-dsh-assistant/model-experience/work-request-and-report/what-the-model-sees:
+  en: 968ca16d5b5baa18
+  zh: bc46471bf0a23394
+/deepseek-ai-dsh-assistant/model-experience/work-request-and-report/what-the-model-sees/worker-reporting-instruction:
+  en: a478f67b36c71035
+  zh: deca5822f59bbd8f
+/deepseek-ai-dsh-assistant/model-experience/work-request-and-report/token-effect:
+  en: 4faf83bf33020704
+  zh: 1a39df6132b37620
+/deepseek-ai-dsh-assistant/model-experience/work-request-and-report/kv-cache-effect:
+  en: 282cffc413dc115f
+  zh: a4a5eba7fe30a567
+/deepseek-ai-dsh-assistant/model-experience/entrance-notes:
+  en: cf9c01d195ff5139
+  zh: bc1bb8d3a2de65a0
+/deepseek-ai-dsh-assistant/model-experience/entrance-notes/what-the-model-sees:
+  en: b1f5c8b6be493641
+  zh: b6801d0291194b8c
+/deepseek-ai-dsh-assistant/model-experience/entrance-notes/what-the-model-sees/entrance-notes-header:
+  en: 057923fd903d041c
+  zh: d153e8e308e59e92
+/deepseek-ai-dsh-assistant/model-experience/entrance-notes/token-effect:
+  en: 0740d116f64055b5
+  zh: 9a21da618cc86729
+/deepseek-ai-dsh-assistant/model-experience/entrance-notes/kv-cache-effect:
+  en: c7c31b2ed2cb3f5d
+  zh: 144331cc960f1c1c
+/deepseek-ai-dsh-assistant/known-limitations-and-deferred-work:
+  en: 3f051f448653c6d1
+  zh: 0e474966ee4fe4ff
+/deepseek-ai-dsh-assistant/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 4db4428cd3b175f5

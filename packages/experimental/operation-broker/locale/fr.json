@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Courtier d’opérations HTTPS",
+    "description": "Envoie les requêtes JSON approuvées aux points de terminaison HTTPS configurés avec les identifiants de l’autorité."
+  }
+}

@@ -1,0 +1,115 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/operation-control/README.md
+/:
+  en: 7ff774ac9831b6e2
+  zh: 68aac1b982dea418
+/deepseek-ai-dsh-operation-control:
+  en: 97585732f74f0240
+  zh: 9ebc3c4b04952b97
+/deepseek-ai-dsh-operation-control/summary:
+  en: 167e167e01dde6e2
+  zh: 0b886d787477e7a0
+/deepseek-ai-dsh-operation-control/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 0cd57b7b8d8c9b59
+/deepseek-ai-dsh-operation-control/use-this-package:
+  en: a9b4e81d5f85cbb6
+  zh: ab99dcee96588d27
+/deepseek-ai-dsh-operation-control/use-this-package/minimal-configuration:
+  en: 50caedb743beba1a
+  zh: 82e481601d883489
+/deepseek-ai-dsh-operation-control/use-this-package/configuration-changes-are-witnessed-at-start:
+  en: ac4b954ef48e0541
+  zh: 2eba2aa237868f7e
+/deepseek-ai-dsh-operation-control/use-this-package/edit-the-grant-limits:
+  en: c4a8fa1c00b17150
+  zh: f421dd7039a9f375
+/deepseek-ai-dsh-operation-control/use-this-package/set-connection-credentials:
+  en: 23a25de8e9c9edb7
+  zh: 2b5a1a5e6631e8ab
+/deepseek-ai-dsh-operation-control/use-this-package/edit-unattended-rules:
+  en: fe6f4245dd01e42a
+  zh: bc7fa97506032649
+/deepseek-ai-dsh-operation-control/use-this-package/bind-work-to-its-principal-and-permissions:
+  en: 3576f784a03e06ff
+  zh: 0b46c97a6e73ec60
+/deepseek-ai-dsh-operation-control/use-this-package/transfer-work-files:
+  en: c5c3fa560df85bf2
+  zh: 99efcafeba5d8dd0
+/deepseek-ai-dsh-operation-control/use-this-package/approve-a-shell-command:
+  en: 4b5df9e60664b50b
+  zh: bbbc83788fe0f47f
+/deepseek-ai-dsh-operation-control/use-this-package/enable-https-business-requests:
+  en: d9d2a060b9b8adfe
+  zh: 1c490de12fb032df
+/deepseek-ai-dsh-operation-control/use-this-package/repeat-a-business-request:
+  en: b4f8ead83bb23b86
+  zh: 44178a3cc729f14d
+/deepseek-ai-dsh-operation-control/use-this-package/reconcile-business-operations:
+  en: d592f62cb2b00dfd
+  zh: 73fdb3c477643729
+/deepseek-ai-dsh-operation-control/use-this-package/read-business-records:
+  en: 04059ab6dc52552f
+  zh: 870b371957ca2854
+/deepseek-ai-dsh-operation-control/use-this-package/compare-records-with-the-witness:
+  en: 044bf8016ba29419
+  zh: d7c3b5944c59b1b1
+/deepseek-ai-dsh-operation-control/use-this-package/enable-model-requests:
+  en: ab3a5e6378746e5c
+  zh: 374977ee38e12de5
+/deepseek-ai-dsh-operation-control/use-this-package/enable-delegation-and-response-delivery:
+  en: 1aa8393280ec5cf9
+  zh: 8ed731ec7a0c92a4
+/deepseek-ai-dsh-operation-control/understand-the-implementation:
+  en: fd129ed441468622
+  zh: 5079931b730f9c69
+/deepseek-ai-dsh-operation-control/further-exploration:
+  en: 8f9bce535ea00c54
+  zh: e6112561c1250261
+/deepseek-ai-dsh-operation-control/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-operation-control/model-experience/execution-result:
+  en: 58fe7d571c9eeb45
+  zh: d6143ed01b245595
+/deepseek-ai-dsh-operation-control/model-experience/execution-result/what-the-model-sees:
+  en: 910e09637ee38cb3
+  zh: e61dafd93474a03c
+/deepseek-ai-dsh-operation-control/model-experience/execution-result/token-effect:
+  en: 63394f788281dd72
+  zh: 46732a201cf292b0
+/deepseek-ai-dsh-operation-control/model-experience/execution-result/kv-cache-effect:
+  en: a68b3a3179da2d84
+  zh: f3775db485d72895
+/deepseek-ai-dsh-operation-control/model-experience/business-inspection:
+  en: dd07f1b9080b7d60
+  zh: f7fd55a6533caf08
+/deepseek-ai-dsh-operation-control/model-experience/business-inspection/what-the-model-sees:
+  en: 464c5229e4ff744b
+  zh: 3a57d346fa2e56c5
+/deepseek-ai-dsh-operation-control/model-experience/business-inspection/token-effect:
+  en: f70cc4d1b1a83bea
+  zh: 725ff95fedc7fad5
+/deepseek-ai-dsh-operation-control/model-experience/business-inspection/kv-cache-effect:
+  en: 1d01f690fac1d9a4
+  zh: 144d9e8548bee23a
+/deepseek-ai-dsh-operation-control/model-experience/model-requests:
+  en: 6725b54f8c6b45f7
+  zh: af319b19d0271f81
+/deepseek-ai-dsh-operation-control/model-experience/model-requests/what-the-model-sees:
+  en: 03c1f262dace7dc5
+  zh: 3b519a84633fa6b2
+/deepseek-ai-dsh-operation-control/model-experience/model-requests/token-effect:
+  en: 8c7747846162c874
+  zh: c1d1a7fb2adcc647
+/deepseek-ai-dsh-operation-control/model-experience/model-requests/kv-cache-effect:
+  en: 4f40f5a285100aab
+  zh: 599237dc0b5a8986
+/deepseek-ai-dsh-operation-control/known-limitations-and-deferred-work:
+  en: df82b40bbf7f8624
+  zh: 6e8d794a17b87e80
+/deepseek-ai-dsh-operation-control/known-limitations-and-deferred-work/dev-note:
+  en: 125d8abad8eb4be4
+  zh: a5ed989eac4c19b0

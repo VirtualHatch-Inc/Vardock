@@ -1,0 +1,103 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types",
+    "tsBuildInfoFile": "lib/tsconfig.host.tsbuildinfo"
+  },
+  "references": [
+    {
+      "path": "../../util/brand"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../core/agent"
+    },
+    {
+      "path": "../../api/session-controller/tsconfig.host.json"
+    },
+    {
+      "path": "../../interaction/permission-presets"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
+      "path": "../../session/session-persistence"
+    },
+    {
+      "path": "../../session/session-projection"
+    },
+    {
+      "path": "../../session/session-title"
+    },
+    {
+      "path": "../../storage/storage-domain"
+    },
+    {
+      "path": "../../core/tools"
+    },
+    {
+      "path": "../../core/system-prompt"
+    },
+    {
+      "path": "../../llm/llm"
+    },
+    {
+      "path": "../../api/remote-access/tsconfig.host.json"
+    },
+    {
+      "path": "../../typert/protocol"
+    },
+    {
+      "path": "../../workspace/workspace"
+    },
+    {
+      "path": "../../interaction/user-questions"
+    },
+    {
+      "path": "../../interaction/user-approval"
+    },
+    {
+      "path": "../../schedule/schedule"
+    },
+    {
+      "path": "../operation-control"
+    },
+    {
+      "path": "../../util/values"
+    },
+    {
+      "path": "../../attachment/attachment"
+    },
+    {
+      "path": "../../session-query/session-query"
+    },
+    {
+      "path": "../../client/connection/tsconfig.host.json"
+    },
+    {
+      "path": "../../session/working-directory"
+    }
+  ],
+  "files": [
+    "src/index.ts",
+    "src/state.ts",
+    "src/tools.ts",
+    "src/mediation.ts",
+    "src/approval-value.ts",
+    "src/schedule-review.ts",
+    "src/notes.ts",
+    "src/status.ts",
+    "src/status-types.ts",
+    "src/work-phase.ts",
+    "src/artifacts.ts",
+    "src/artifact-url.ts",
+    "src/data.ts"
+  ]
+}

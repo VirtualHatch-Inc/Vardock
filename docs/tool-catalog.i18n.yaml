@@ -9,8 +9,38 @@
   en: 6cc2cd9ced70bb09
   zh: 1c0e6cb4ba2ed637
 /tool-schema-catalog/tool-package-map:
-  en: 1bec3e5c70eae394
-  zh: 922d507fa65ae319
+  en: 731b7986cb445137
+  zh: def896df0dd2b93a
+/tool-schema-catalog/deepseek-ai-dsh-operation-control:
+  en: 9f432ea414dd9370
+  zh: 9f432ea414dd9370
+/tool-schema-catalog/deepseek-ai-dsh-operation-control/exec:
+  en: 9461dfedec2ec44b
+  zh: a84b73f73219e1b2
+/tool-schema-catalog/deepseek-ai-dsh-operation-control/inspect-business-operations:
+  en: 6a59c9494a770174
+  zh: 41548c8301d08fc2
+/tool-schema-catalog/deepseek-ai-dsh-operation-control/list-business-actions:
+  en: dc85bb655000f9f8
+  zh: 09af08170019b713
+/tool-schema-catalog/deepseek-ai-dsh-assistant:
+  en: 8b3f4188b49c0d87
+  zh: 8b3f4188b49c0d87
+/tool-schema-catalog/deepseek-ai-dsh-assistant/delegate-work:
+  en: 3a4d65a717dba848
+  zh: 596b6c0c55e8fd70
+/tool-schema-catalog/deepseek-ai-dsh-assistant/list-work:
+  en: 50b8afbea3247098
+  zh: c213c529ba5a4ab6
+/tool-schema-catalog/deepseek-ai-dsh-assistant/list-work-inputs:
+  en: 37e3fcec7dd782de
+  zh: fee09c67966b1c09
+/tool-schema-catalog/deepseek-ai-dsh-assistant/report-work:
+  en: 92842431c743ec62
+  zh: 19e5eb66e6f8b4a9
+/tool-schema-catalog/deepseek-ai-dsh-assistant/stop-work:
+  en: 794d8c1b939a08e0
+  zh: cb8218fa492008dc
 /tool-schema-catalog/deepseek-ai-dsh-plugin-manager:
   en: e0143916bb634762
   zh: e0143916bb634762

@@ -3,7 +3,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context, type Fiber } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import { Config, probeServer } from '@deepseek-ai/dsh-mcp-client'
+import { Config, probeServer, type StreamableHttpConfig } from '@deepseek-ai/dsh-mcp-client'
+import { callServerTool } from '@deepseek-ai/dsh-mcp-client/call'
 import { McpTemplateBinding } from '@deepseek-ai/dsh-mcp-client/src/credentials.ts'
 import { TestCredentials } from './credential-fixture.ts'
 import { startHttpMcpFixture } from './http-fixture.ts'
@@ -11,9 +12,10 @@ import { startHttpMcpFixture } from './http-fixture.ts'
 const ref = credentialRef('MCP_TOKEN')
 const url = 'https://mcp.invalid/fixture'
 
-function httpConfig(): Config {
+function httpConfig(): StreamableHttpConfig {
+  // The literal transport selects the Streamable HTTP branch of the validated union.
   return Config({ transport: 'streamable-http', serverName: 'binding', url,
-    headers: { Authorization: 'Bearer ${credential:MCP_TOKEN}' }, expandTemplates: true })
+    headers: { Authorization: 'Bearer ${credential:MCP_TOKEN}' }, expandTemplates: true }) as StreamableHttpConfig
 }
 
 describe('McpTemplateBinding', () => {
@@ -90,6 +92,50 @@ describe('McpTemplateBinding', () => {
       expect(server.authorization.length).toBeGreaterThan(0)
       expect(server.authorization.every(value => value === 'Bearer first-token')).toBe(true)
       expect(server.calls).toEqual([])
+    } finally {
+      await server.close()
+    }
+  })
+
+  it('calls one tool with expanded HTTP credentials and closes the connection', async () => {
+    const server = await startHttpMcpFixture()
+    try {
+      const config = { ...httpConfig(), url: server.url }
+      expect(await callServerTool(ctx, config, { name: 'ping', arguments: {} }, 65_536)).toEqual({ ok: true, isError: false, text: 'pong', closeConfirmed: true })
+      expect(server.calls).toEqual(['ping'])
+      expect(server.authorization.every(value => value === 'Bearer first-token')).toBe(true)
+      const aborted = new AbortController()
+      aborted.abort()
+      expect(await callServerTool(ctx, config, { name: 'ping', arguments: {} }, 65_536, aborted.signal))
+        .toMatchObject({ ok: false, stage: 'connect', message: 'call aborted' })
+      expect(server.calls).toEqual(['ping'])
+    } finally {
+      await server.close()
+    }
+  })
+
+  it('redacts the credential from a tool error and reports a failed connection as not called', async () => {
+    const server = await startHttpMcpFixture({ rejectToolCalls: true })
+    const config = { ...httpConfig(), url: server.url }
+    try {
+      expect(await callServerTool(ctx, config, { name: 'ping', arguments: {} }, 65_536))
+        .toEqual({ ok: true, isError: true, text: 'MCP fixture rejected Bearer [redacted]', closeConfirmed: true })
+    } finally {
+      await server.close()
+    }
+    expect(await callServerTool(ctx, config, { name: 'ping', arguments: {} }, 65_536)).toMatchObject({ ok: false, stage: 'connect' })
+  })
+
+  it('stops reading at the read bound and classifies the failure by whether the call was sent', async () => {
+    const server = await startHttpMcpFixture({ reply: 'x'.repeat(100_000) })
+    const config = { ...httpConfig(), url: server.url }
+    try {
+      expect(await callServerTool(ctx, config, { name: 'ping', arguments: {} }, 1))
+        .toMatchObject({ ok: false, stage: 'connect', message: 'server responses exceeded 1 bytes' })
+      expect(server.calls).toEqual([])
+      expect(await callServerTool(ctx, config, { name: 'ping', arguments: {} }, 65_536))
+        .toMatchObject({ ok: false, stage: 'call', message: 'server responses exceeded 65536 bytes', closeConfirmed: true })
+      expect(server.calls).toEqual(['ping'])
     } finally {
       await server.close()
     }

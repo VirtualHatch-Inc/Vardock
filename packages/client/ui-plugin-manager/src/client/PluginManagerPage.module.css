@@ -1721,6 +1721,7 @@ label.registryOption {
   overflow-wrap: anywhere;
 }
 
+.pageIntro[hidden],
 .toolbar[hidden] {
   display: none;
 }

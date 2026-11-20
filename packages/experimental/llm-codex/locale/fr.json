@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Codex local",
+    "description": "Utilisez la connexion locale à la CLI Codex pour envoyer les requêtes au modèle."
+  }
+}

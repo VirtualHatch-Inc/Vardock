@@ -1700,7 +1700,7 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
               <header className={css.pageHead} data-window-drag>
                 <div className={css.pageHeading}>
                   <h1 className={css.pageTitle} data-plugin-header-part="title">{t('title')}</h1>
-                  <div className={css.pageIntro} data-plugin-header-part="intro">
+                  <div className={css.pageIntro} data-plugin-header-part="intro" hidden={state.management === 'fixed'}>
                     <span>{t('intro')}</span>
                     <Tooltip label={t('infoDescription')} side="bottom" delayMs={300} maxWidth={300} portal openOnClick>
                       <Button variant="ghost" size="sm" className={css.infoButton} aria-label={t('infoLabel')}>
@@ -1718,7 +1718,7 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
                       <span className={css.toolbarLabel}>{t('refresh')}</span>
                     </Button>
                   </Tooltip>
-                  {state.install.requestId === undefined
+                  {state.management === 'full' && (state.install.requestId === undefined
                     ? <AddPluginMenu t={t} disabled={!loaded} openInstall={props.openInstall} renderSlot={renderSlot} />
                     : (
                       <Tooltip label={t('installViewTask')} side="bottom" delayMs={500} focusDelayMs={500} portal disabled={!loaded}>
@@ -1727,7 +1727,7 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
                           <span className={css.toolbarLabel}>{t('installViewTask')}</span>
                         </Button>
                       </Tooltip>
-                    )}
+                    ))}
                 </div>
                 {tabs.length > 0
                   ? (
@@ -1882,7 +1882,7 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
             },
           }, { entryKey: activated.name }) : null}
       </div>
-      {state.update === null ? null : (
+      {state.management !== 'full' || state.update === null ? null : (
         <UpdateDialog
           update={state.update}
           title={updatePkg === undefined ? state.update.packageName : packageText(updatePkg, resolveText).title}
@@ -1892,7 +1892,7 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
           onToggleOutput={props.toggleUpdateOutput}
         />
       )}
-      <InstallDialog
+      {state.management === 'full' && <InstallDialog
         install={state.install}
         t={t}
         onClose={props.closeInstall}
@@ -1907,8 +1907,8 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
         onChooseRegistry={props.chooseRegistry}
         onChangeRegistry={props.changeRegistry}
         onUseGithubMirror={props.useGithubMirror}
-      />
-      {state.confirm === null
+      />}
+      {state.management !== 'full' || state.confirm === null
         ? null
         : (
           <ConfirmDialog

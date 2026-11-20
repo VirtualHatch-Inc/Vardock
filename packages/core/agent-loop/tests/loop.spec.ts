@@ -401,9 +401,10 @@ describe('agent loop', () => {
     await agent.whenIdle()
   })
 
-  it('replays a wake latched behind maintenance at convergence', async () => {
+  it('wakes previously queued input after maintenance settles', async () => {
     const adapter = new MockAdapter([textResponse('wake reply')])
     const ctx = await harness(adapter)
+    onTestFinished(() => ctx.fiber.dispose())
     const agent = await ctx.agentLoop.create(SessionId('maintenance-wake-replay'), {
       provider: 'mock',
       model: 'mock',
@@ -416,9 +417,16 @@ describe('agent loop', () => {
     })
     await started.promise
 
-    send(agent, 'wake behind maintenance')
-    finish.resolve(undefined)
-    await maintenance
+    try {
+      const input = createUserMessage({ content: [{ type: 'text', text: 'wake behind maintenance' }], source: { kind: 'user' } })
+      agent.send(input, 'next-turn', false)
+      agent.wake()
+      expect(adapter.requests).toEqual([])
+      expect(agent.inbox.nextTurn).toEqual([input])
+    } finally {
+      finish.resolve(undefined)
+      await maintenance
+    }
     await agent.whenIdle()
 
     expect(userTexts(agent)).toEqual(['wake behind maintenance'])
@@ -450,6 +458,55 @@ describe('agent loop', () => {
     expect(userTexts(agent)).toEqual([])
     expect(adapter.requests).toEqual([])
     expect(agent.session.snapshotEvents().filter(e => e.type === 'turn/start')).toHaveLength(0)
+  })
+
+  it('wakes queued input once and leaves an empty inbox idle', async () => {
+    const adapter = new MockAdapter([textResponse('reply')])
+    const ctx = await harness(adapter)
+    onTestFinished(() => ctx.fiber.dispose())
+    const agent = await ctx.agentLoop.create(SessionId('wake-pending-input'), { provider: 'mock', model: 'mock' })
+    const input = createUserMessage({ content: [{ type: 'text', text: 'queued input' }], source: { kind: 'user' } })
+
+    agent.wake()
+    await agent.whenIdle()
+    agent.send(input, 'next-turn', false)
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'turn/start')).toHaveLength(0)
+
+    agent.wake()
+    agent.wake()
+    await agent.whenIdle()
+
+    expect(adapter.requests).toHaveLength(1)
+    expect(userTexts(agent)).toEqual(['queued input'])
+    expect(agent.inbox.nextTurn).toEqual([])
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'turn/start')).toHaveLength(1)
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'agent/inbox/spliced')
+      .map(event => event.data.inserted.map(message => message.id))).toEqual([[input.id], []])
+  })
+
+  it('honors a wake queued as the last running turn settles', async () => {
+    const adapter = new MockAdapter([textResponse('first reply'), textResponse('second reply')])
+    const ctx = await harness(adapter)
+    onTestFinished(() => ctx.fiber.dispose())
+    const agent = await ctx.agentLoop.create(SessionId('wake-settling-turn'), { provider: 'mock', model: 'mock' })
+    const input = createUserMessage({ content: [{ type: 'text', text: 'second' }], source: { kind: 'user' } })
+    let queuedWhileRunning = false
+    ctx.on('session/event', (session, event) => {
+      if (session !== agent.session || event.type !== 'turn/end' || event.data.turn !== 1) return
+      // Land after the turn's final inbox check and before the driver returns to idle.
+      queueMicrotask(() => {
+        queuedWhileRunning = agent.status === 'running'
+        agent.send(input, 'next-turn', false)
+        agent.wake()
+      })
+    })
+
+    send(agent, 'first')
+    await agent.whenIdle()
+
+    expect(queuedWhileRunning).toBe(true)
+    expect(userTexts(agent)).toEqual(['first', 'second'])
+    expect(adapter.requests).toHaveLength(2)
   })
 
   it('runs a simple turn: queued message → model → idle, with ordered events', async () => {

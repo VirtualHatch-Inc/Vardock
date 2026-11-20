@@ -1,5 +1,5 @@
 ---
-description: "非 owner Peer 的 Remote 方法级访问控制：基于角色的 policy 判定、列表过滤与每个 Peer 的访问快照。"
+description: "Remote 访问控制，包括端点 guard、基于角色的 policy、列表过滤和各 Peer 的授权快照。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-决定非 owner Peer 可以调用哪些 Remote 方法、可以收到哪些转发事件。业务包定义 role（限定一种资源种类的 action 集合），并为每种非 owner principal kind 注册一个 policy，把 role 绑定到资源上。[API Gateway](../gateway/README.zh.md) 解析一次调用或一个事件访问的资源，并在解析 lookup、解码参数之前询问本包。列表方法经 `allows()` 逐项过滤；每个 Peer 订阅自己的访问快照，Client 据此隐藏 Host 会拒绝的入口。设计由 [Peer 身份属性 Agent Note](../../../.agents/notes/implemented/architecture/2026-10-12-peer-principal-and-remote-access.zh.md) 负责。
+业务包可以为任意 principal 的 Remote 调用和列表项设置 guard，包含 owner。基于 role 的 policy 还控制非 owner 的调用和转发事件。[API Gateway](../gateway/README.zh.md) 在校验 JSON 参数后、解析 lookup 前检查调用访问的资源。列表方法通过 `allows()` 逐项过滤。每个 Client 订阅其 Peer 的授权快照，隐藏超出授权的入口。[Peer 身份属性 Agent Note](../../../.agents/notes/implemented/architecture/2026-10-12-peer-principal-and-remote-access.zh.md) 说明设计。
 
 ## 目录
 
@@ -24,18 +24,19 @@ kind: "package-reference"
 <a id="host-service"></a>
 ## Host 服务：`RemoteAccessService`（ctx key：`remoteAccess`）
 
-挂载 [API Gateway](../gateway/README.zh.md) 的组合都要挂载本服务：Gateway 注入 `remoteAccess`，没有它就不启动。[`bundle/base`](../../bundle/base/cordis.patch.yml) 紧随 `typert-gateway` 装配它。owner（`{ kind: 'owner' }`）从不受检查；下列成员都只针对非 owner principal。
+挂载 [API Gateway](../gateway/README.zh.md) 的组合都要挂载本服务：Gateway 注入 `remoteAccess`，没有它就不启动。[`bundle/base`](../../bundle/base/cordis.patch.yml) 紧随 `typert-gateway` 装配它。
 
 | 成员 | 契约 |
 |---|---|
+| `guard(callback)` | 在调用方的 fiber 中注册同步检查，并返回 disposer。检查调用时，回调收到与 `decide()` 相同的请求。检查列表项时，请求只含一项资源，省略 `args`。回调返回公开的拒绝原因，或返回 `undefined` 以继续判定。 |
 | `registerPolicy(kind, policy)` | 为一种非 owner principal kind 注册 `RemoteAccessPolicy`；其 `bindings()` 与 `explain()` 收到的 principal 按该 kind 定型。同一 kind 再注册一个 policy 即抛错。登记是调用方 fiber 的 Cordis effect；注册与撤回都会重新计算已打开的快照。 |
 | `invalidate(principal?)` | 报告某个 principal（省略时为所有 principal）的 binding 或 condition 结论可能已变化。业务包在每次授权、撤权、模式切换与过期时调用。 |
-| `decide(request)` | 仅供 Gateway 使用。`request` 为 `{ principal, action, resources, args? }`：调用方或接收方、端点 `ns/method` 或 `event:<name>`、Gateway 解析出的合法资源，以及调用中按 Typert 编译类型校验后的参数（lookup 参数为 wire 身份）。返回 `{ kind: 'allow' }` 或 `{ kind: 'deny', reason }`；调用被拒时由 Gateway 抛出 details 为 `{ action, reason }` 的 `remote-access/denied`，事件被拒时由 Gateway 直接丢弃、不构造错误。owner 与 `remoteAccess/follow` 恒放行。 |
-| `allows(resource)` | 读访问本服务的 Context 上的 invocation，因此列表方法对每一项调用 `this.ctx.remoteAccess.allows(resource)`。不带参数判定该调用的端点 action 在该资源上是否被允许，每次判定都重新读取 binding。owner 与 Remote 调用之外恒为 true。 |
+| `decide(request)` | 仅供 Gateway 使用。`request` 为 `{ principal, action, resources, args? }`：调用方或接收方、端点 `ns/method` 或 `event:<name>`、Gateway 解析出的合法资源，以及调用中按 Typert 编译类型校验后的参数（lookup 参数为 wire 身份）。返回 `{ kind: 'allow' }` 或 `{ kind: 'deny', reason }`；调用被拒时由 Gateway 抛出 details 为 `{ action, reason }` 的 `remote-access/denied`，事件被拒时由 Gateway 直接丢弃、不构造错误。首个拒绝端点检查的 guard 决定结果。通过 guard 后，owner 与 `remoteAccess/follow` 无需 policy binding 即可放行。 |
+| `allows(resource)` | 读访问本服务的 Context 上的 invocation，因此列表方法对每一项调用 `this.ctx.remoteAccess.allows(resource)`。在该资源上检查 guard 和非 owner 的 policy binding，省略调用参数。Remote 调用之外返回 true。 |
 | `snapshotFor(principal)` | 页面打开时的 baseline：owner 为 `{ type: 'baseline', owner: true }`，否则为该 principal 当前的 grant。 |
 | `follow(signal)` | Remote stream `remoteAccess/follow`：一个 `baseline`，之后是 `upsert` 与 `remove` 帧。owner 只收到 `{ type: 'baseline', owner: true }`。`signal` abort 或服务卸载时流结束，因此重载后的服务从新的 baseline 回答每个读者。 |
 
-role `{ name, resource, actions }` 是普通值，表示限定一种资源种类（`global` 或在 `TypertResourceMap` 中声明的种类）的 action 集合。binding `{ role, resource, condition? }` 在该 role 种类的一个资源上授予该 role。policy 根据预先载入内存的状态同步回答 `bindings(principal)` 与可选的 `explain(request)`。只有在每个已解析资源上都有某个 binding 指向该资源、其 role 列出该 action、且没有 condition 或 condition 放行时，请求才被放行。资源之间相互独立：`global` 上的授权不蕴含任何其他资源上的授权，任何资源也不蕴含另一个资源。condition 收到 `{ action, resource, args? }`，只对资源与 role 都匹配的 binding 调用；事件、快照与列表过滤时没有 `args`。`bindings()` 在每次 `decide()`、每次 `allows()` 判定与每次快照计算中各调用一次，不跨判定缓存，因此依赖时间的状态对下一次调用即时生效。
+role `{ name, resource, actions }` 是普通值，表示限定一种资源种类（`global` 或在 `TypertResourceMap` 中声明的种类）的 action 集合。binding `{ role, resource, condition? }` 在该 role 种类的一个资源上授予该 role。policy 根据预先载入内存的状态同步回答 `bindings(principal)` 与可选的 `explain(request)`。只有在每个已解析资源上都有某个 binding 指向该资源、其 role 列出该 action、且没有 condition 或 condition 放行时，policy 才会授权。资源之间相互独立：`global` 上的授权不蕴含任何其他资源上的授权，任何资源也不蕴含另一个资源。condition 收到 `{ action, resource, args? }`，只对资源与 role 都匹配的 binding 调用；事件、快照与列表过滤时没有 `args`。每次 policy 检查和每次快照计算各调用一次 `bindings()`。服务在每次检查时读取当前 binding。
 
 Gateway 依次从 `@Remote` 与 `@RemoteScope` 的 `resources` 读取函数、lookup 与 Host Context adapter 的 `resource` 声明、`typert.resources` 中的默认字段或 resolver 声明解析资源，解析顺序由 [API Gateway](../gateway/README.zh.md) 负责；本包不读取任何参数字段。不指明任何资源的调用只访问 `global` 资源，因此只有 `global` 级 role 能放行；把某个 action 放进 `global` 级 role，等于允许该 principal 在调用未指明的任何资源上调用它。资源非法的调用由 Gateway 以 `resource-invalid` 拒绝，不询问 `decide()`。
 
@@ -51,10 +52,12 @@ policy 作者必须把 `session/attachment` 视为整个附件存储的读取权
 |---|---|
 | `resource-invalid` | 由 Gateway 在 `decide()` 之前给出：资源读取函数抛错或返回空列表，或某个资源 id（含 Context 身份）不是非空字符串。 |
 | `no-allow` | 该 principal kind 没有 policy，或在某个资源上没有 binding 放行该 action，且 condition 与 `explain()` 都没有给出原因。 |
+| guard 的原因 | 最先拒绝端点检查的已注册 guard 提供原因。 |
+| `guard-failed` | guard 抛错。服务记录每个 guard 注册的首次失败，并拒绝受影响的调用或列表项。 |
 | `policy-failed` | `bindings()`、condition 或 `explain()` 抛错；该失败按上文规则记录日志。 |
 | condition 或 `explain()` 的原因 | 在第一个没有 binding 放行的资源上，取匹配 binding 中第一个拒绝的 condition 的原因；没有时取 `explain(request)` 的返回值。 |
 
-快照 grant 按该 principal 的 binding 所指的每个资源，列出这些 binding 的 role 中、经 `decide()` 在该资源上不带调用参数放行的端点 action（已排序），因此在同一 principal、action 与资源上快照与 `decide()` 一致；没有此类 action 的资源不出 grant，放行集合变空时推送 `remove`。`event:` action 不进入快照。快照只在 `invalidate()` 与 policy 注册或撤回之后重算。
+快照 grant 按资源列出 principal 的 policy binding 在无调用参数时授予的端点 action，并排序。资源失去最后一个已授权 action 时，流推送 `remove`。快照记录 policy 授权，端点 guard 则检查实际调用与列表项。快照只在 `invalidate()` 与 policy 注册或撤回后重算。
 
 <a id="client-face"></a>
 ## Client 面

@@ -50,12 +50,12 @@ type ApprovalPolicy = 'ask' | 'never'
 
 ## 审批请求
 
-`ApprovalRequest` 以足够精确的方式标识 agent 和工具操作，以便路由和审计该问题。它有意省略工具参数：应答者通过 `callId` 将提示附加到已流式输出的工具调用上，而非渲染另一份可能漂移的副本。可选的 `displayReason` 向界面传递请求方提供的本地化字符串；`reason` 仍是审计文本。
+`ApprovalRequest` 标识应答 agent 和请求执行的操作。应答者可以使用 `callId` 显示已经流式输出的工具调用。独立请求可以通过 `detail` 提供纯文本详情。服务将 `reason` 写入审计日志，`displayReason` 可以提供本地化标题。
 
 ```ts type-equiv
 /**
  * Readonly same-process permission question. `callId` links to an already
- * presented tool call, so arguments are not duplicated here.
+ * presented tool call. Standalone questions can supply their own plain-text detail.
  */
 interface ApprovalRequest extends ApprovalRequestEvent {
   /**
@@ -83,7 +83,9 @@ interface ApprovalRequest extends ApprovalRequestEvent {
 
 ## 分发与审计
 
-`ctx.approval.request(req)` 要求发起请求的会话处于一个尚未结束的轮次内。它追加 `approval/asked`，获取一个结果，追加对应的 `approval/decided`，然后以该结果完成。`never` 策略在服务内部、waterfall 分发之前强制执行，因此即使后来以 `prepend` 注册的应答者也无法绕过它。应答者在负责处理该请求时返回结果，否则调用 `next()` 委托；第一个应答占据唯一的决策槽位。
+`ctx.approval.request(req)` 要求会话处于开放轮次内。`ctx.approval.requestBackground(req)` 可以向空闲会话发起审批，调用方须提供具有活动持久化写入句柄的会话。两种方法都会追加 `approval/asked`，获取一个结果，追加对应的 `approval/decided`，并返回该结果。后台方法在分发前持久化请求，在返回前持久化决定。
+
+服务在分发 waterfall 之前执行 `never` 策略。应答者在负责处理该请求时返回结果，否则调用 `next()` 委托。只接受首个应答。
 
 审计事件仅写入日志，不进入模型 transcript（文本记录）。模型可见的行为是调用方派生的工具结果与当前运行时上下文快照。服务 dispose（资源释放）时会移除其上下文贡献；应答者监听器独立地通过 effect 绑定到其所属插件。
 
@@ -114,8 +116,7 @@ setPolicy(agent: Agent, policy: ApprovalPolicy): void
 /**
  * Ask the composed answerers to decide one readonly same-process request.
  * The service borrows the request, agent, session, and live signal directly.
- * The request requires an open turn because the audit pair must be enclosed
- * by the durable log's commit/replay boundary; an idle ask rejects before
+ * A tool request belongs to an open turn. An idle ask rejects before
  * appending anything. The answerer phase always produces an outcome: an
  * aborted signal yields `'cancelled'`, a missing or throwing answerer yields
  * `'unavailable'` (fail closed), and a rogue non-vocabulary return value is
@@ -130,6 +131,17 @@ setPolicy(agent: Agent, policy: ApprovalPolicy): void
  *   append commit point.
  */
 async request(req: ApprovalRequest): Promise<ApprovalOutcome>
+
+/**
+ * Ask for one decision on a background operation, including while the answering agent is idle.
+ * The caller supplies a live Session with an active persistence writer. Flush the ask before
+ * dispatch and the decision before returning. A failed audit or checkpoint prevents a grant.
+ * @param req - The answering agent, exact operation in the audit reason, presentation detail, and cancellation signal.
+ * @returns The persisted outcome under the answering Session's policy. Only `allowed-once` grants the request.
+ * @throws When the optional `sessions` service or a Session checkpoint listener is unavailable, or an audit append
+ *   or flush fails.
+ */
+async requestBackground(req: ApprovalRequest): Promise<ApprovalOutcome>
 
 /**
  * Read the session override without applying the configured default.

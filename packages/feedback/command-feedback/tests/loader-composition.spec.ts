@@ -41,6 +41,7 @@ async function agent(ctx: Context): Promise<Agent> {
     ctx: scope.ctx,
     get status() { return status },
     send: () => {},
+    wake: () => {},
     followup: () => {},
     steer: () => {},
     inject: () => {},

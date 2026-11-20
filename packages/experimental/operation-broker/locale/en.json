@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "HTTPS operation broker",
+    "description": "Send approved JSON requests to configured HTTPS endpoints with authority-owned credentials."
+  }
+}

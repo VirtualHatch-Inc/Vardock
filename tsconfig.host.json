@@ -37,6 +37,8 @@
     "apps/web/tests/search-empty-include.e2e.ts",
     "apps/web/tests/code-card-layout.e2e.ts",
     "apps/web/tests/code-language.snapshot.ts",
+    "apps/web/tests/assistant.snapshot.ts",
+    "apps/web/tests/assistant-real.e2e.ts",
     "apps/web/tests/scaffold.ts",
     "apps/web/tests/clock.e2e.ts",
     "apps/web/tests/voice-input.e2e.ts",
@@ -283,6 +285,11 @@
     "scripts/client-bundle-purity.spec.ts"
   ],
   "references": [
+    { "path": "./packages/experimental/assistant/tsconfig.host.json" },
+    { "path": "./packages/experimental/execution-container" },
+    { "path": "./packages/experimental/operation-broker" },
+    { "path": "./packages/experimental/operation-control" },
+    { "path": "./packages/experimental/operation-evidence" },
     { "path": "./packages/experimental/action-cards" },
     { "path": "./packages/experimental/creation-recommendations" },
     { "path": "./packages/experimental/plugin-recommendations" },
@@ -486,6 +493,7 @@
     { "path": "./packages/experimental/ptc-runtime-python" },
     { "path": "./packages/ptc-runtime/ptc-runtime-node" },
     { "path": "./packages/llm/llm-deepseek" },
+    { "path": "./packages/experimental/llm-codex" },
     { "path": "./packages/llm/llm-deepseek-api-key" },
     { "path": "./packages/llm/llm-deepseek-account" },
     { "path": "./packages/llm/llm-pi-ai" },

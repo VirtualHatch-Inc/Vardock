@@ -1,0 +1,126 @@
+- insert:
+    - id: speech-to-text
+      name: '@deepseek-ai/dsh-experimental-speech-to-text'
+      config:
+        defaultProvider: sensevoice-local
+    - id: speech-to-text-sensevoice
+      name: '@deepseek-ai/dsh-experimental-speech-to-text-sensevoice'
+      config:
+        dataRoot: !!js dshHomePath('speech-to-text', 'sensevoice')
+        modelOrigins: ['https://huggingface.co']
+    - id: api-speech-to-text
+      name: '@deepseek-ai/dsh-experimental-api-speech-to-text'
+    - id: ui-voice-input
+      name: '@deepseek-ai/dsh-experimental-client-ui-voice-input'
+    - id: operation-control-agent
+      name: '@deepseek-ai/dsh-operation-control/agent'
+      inject: [agents, approval]
+      config:
+        timeoutMs: 360000
+        socketPath: !!js process.env.DSH_OPERATION_SOCKET
+        approval:
+          socketPath: !!js process.env.DSH_APPROVAL_SOCKET
+          mainSessionId: assistant-main
+    - id: operation-control-handoff
+      name: '@deepseek-ai/dsh-operation-control/handoff'
+      config:
+        socketPath: !!js process.env.DSH_OPERATION_SOCKET
+        approvalSocketPath: !!js process.env.DSH_APPROVAL_SOCKET
+    - id: assistant-tool-schedule
+      name: '@deepseek-ai/dsh-tool-schedule'
+      config:
+        callerTargetOnly: true
+    - id: assistant
+      name: '@deepseek-ai/dsh-assistant'
+      config:
+        mainSessionId: assistant-main
+        maxActive: 2
+
+- id: preset-standard
+  config:
+    id: standard
+    order: 1
+    plugins:
+      - id: time-context
+        name: '@deepseek-ai/dsh-time-context'
+        config:
+          refreshIntervalMs: 0
+      - id: compaction
+        name: cordis:group
+        group: true
+        isolate:
+          compaction: true
+          toolResultPruner: true
+        config:
+          - id: compaction-basic
+            name: '@deepseek-ai/dsh-compaction-basic'
+          - id: command-compact
+            name: '@deepseek-ai/dsh-command-compact'
+          - id: tool-result-pruner
+            name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+            config:
+              thresholdChars: 8192
+              headChars: 4096
+              tailChars: 1024
+
+- id: office-kit
+  disabled: true
+- id: plugin-manager
+  config:
+    management: fixed
+    fallbackRegistries: []
+- id: ui-plugin-manager
+  config:
+    registryProbeEnabled: false
+# The Assistant runs only the standard preset; the other Web presets mount host shell and file tools.
+- { id: preset-ptc, disabled: true }
+- { id: preset-minimal, disabled: true }
+- { id: preset-cordis, disabled: true }
+# Outside services connect through the authority's broker; these Host services act outside it.
+- { id: mcp-manager, disabled: true }
+- { id: deepseek-account, disabled: true }
+- { id: session-telemetry-otel, disabled: true }
+- { id: cordis-inspect-providers, disabled: true }
+# The Assistant attaches Sessions to their starting directory; the picker would list and create Host directories.
+- { id: directory-picker, disabled: true }
+- id: ui-conversation
+  config:
+    showWorkspacePicker: false
+    heroTitle: Vardock
+    showHeroBadge: false
+    plainPlaceholder: true
+- id: ui-agent-preset
+  config:
+    showConversationControls: false
+- id: skill-office
+  disabled: true
+- id: ui-account-notifications
+  disabled: true
+- { id: ui-settings-subagent, disabled: true }
+- { id: ui-settings-web-search, disabled: true }
+- { id: ui-settings-shell, disabled: true }
+- { id: entry-customization, disabled: true }
+- { id: ui-permission, disabled: true }
+- { id: ui-model-selection, disabled: true }
+- { id: ui-skill, disabled: true }
+- { id: ui-reference, disabled: true }
+- { id: ui-plan, disabled: true }
+- { id: ui-goal, disabled: true }
+- { id: ui-subagent, disabled: true }
+- { id: ui-agent-team, disabled: true }
+- { id: ui-jobs, disabled: true }
+- { id: ui-sidebar-terminal, disabled: true }
+- { id: terminal-controller, disabled: true }
+- { id: ui-sidebar-browser, disabled: true }
+- { id: ui-sidebar-files, disabled: true }
+- { id: ui-sidebar-documentpreview, disabled: true }
+- { id: ui-open-in-app, disabled: true }
+- { id: open-in-app, disabled: true }
+- { id: workspace-changes, disabled: true }
+- { id: ui-deliverables, disabled: true }
+- { id: deliverable-file-references, disabled: true }
+- { id: ui-workflow-run, disabled: true }
+- { id: ui-settings-models, disabled: true }
+- { id: ui-settings-account, disabled: true }
+- { id: ui-settings-session-log, disabled: true }
+- { id: session-log-deepseek, disabled: true }

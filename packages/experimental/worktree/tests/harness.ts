@@ -44,7 +44,7 @@ export function testAgent(ctx: Context, cwd: string, name = 'worktree-test'): Ag
   const agent: Agent = {
     id, session, options: {}, status: 'idle', ctx: scope.ctx, model: unsupportedModel(),
     inbox: unsupportedInbox(),
-    send() {}, followup() {}, steer() {}, inject() {}, cancel() {},
+    send() {}, wake() {}, followup() {}, steer() {}, inject() {}, cancel() {},
     whenIdle: async () => {}, runMaintenance: task => task(new AbortController().signal),
   }
   ctx.agents.register(agent)

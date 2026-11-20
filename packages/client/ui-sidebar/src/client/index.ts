@@ -41,6 +41,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 const NS = 'sidebar'
 
 interface WorkspaceNavigation {
+  readonly conversationEntrance: SidebarRootInjected['hooks']['conversationEntrance']
   startSession(workspaceId?: Parameters<SidebarRootInjected['startSession']>[0]): void
 }
 
@@ -76,14 +77,15 @@ export function apply(ctx: ClientContext): void {
   }
 
   const injectProps = (): SidebarRootInjected => ({
-    // The shell's New Session button rides the Workspace UI's shared action
-    // (current Session Workspace, then recent Workspace).
     startSession: (workspaceId) => { workspaceNavigation.startSession(workspaceId) },
     toggleSidebar: () => { ctx.layout.toggleSidebar() },
     selectPanel: (id) => { ctx.layout.selectPanel(id) },
     setPinned: panelPins.setPinned,
     trackEntryClick: (attributes) => { ctx.get('productAnalytics')?.track('sidebar_menu_click', attributes) },
-    hooks: { panels, shortcuts: ctx.shortcuts.catalog, entryPins: panelPins.unpinned, entryActions },
+    hooks: {
+      panels, shortcuts: ctx.shortcuts.catalog, conversationEntrance: workspaceNavigation.conversationEntrance,
+      entryPins: panelPins.unpinned, entryActions,
+    },
   })
   ctx.slots.inject('sidebar', function* () {
     yield ctx.slots.registerFactory({

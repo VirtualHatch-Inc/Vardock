@@ -1,23 +1,27 @@
-# 贡献
+# 为 Vardock 做贡献
 
-[English](CONTRIBUTING.md) | 中文
+[English](CONTRIBUTING.md) | [日本語](CONTRIBUTING.ja.md) | 中文
 
-感谢你愿意为 DeepSeek Harness 作出贡献！
+Vardock 是 DeepSeek Harness 的独立定制项目。请在本仓库讨论 Vardock 的行为和变更提案；不要向上游 DSH 维护者发送 Vardock 专属的支持请求。参与本项目须遵守[行为准则](CODE_OF_CONDUCT.zh.md)。
 
-我们深信开源社区的力量，这份信念从项目最初就塑造着 DeepSeek Harness。
+## 报告问题
 
-DeepSeek Harness 仍处于早期阶段，并在积极开发中。很抱歉，我们目前无法接受外部 PR（Pull Request）。不过，贡献代码远非帮助本仓库建设的唯一途径。你还可以通过许多其他方式参与进来：
+请提供受影响的组件、操作系统、版本、最小复现、预期行为和实际结果。请从日志中移除访问令牌、凭据、私人输入和 Session 内容。敏感报告请遵循[安全说明](SAFETY.zh.md#local-operation-and-reports)。
 
-- 在 GitHub Discussions 中发现并报告问题或 bug：
-  - 为你希望引起团队关注的讨论投票。我们的团队规模很小，可能无法回复每个帖子，但我们会持续关注，并在分配资源时将这些讨论纳入考虑。
-- 为生态系统作出贡献：
-  - 创建令你感兴趣的插件，并分享给其他人：
-    - 为你的 GitHub 项目添加 `dsh-plugin` 话题，让其他人更容易找到你的插件。
-  - 撰写有关 DeepSeek Harness 的博客文章和操作指南。
-  - 回答问题并帮助其他社区成员。
+## 提交变更
 
-DeepSeek Harness 的设计支持深度定制。我们并不认为官方仓库中的包天然就比社区开发的包更重要。你可以将本仓库看作一种理念、一份官方示例以及一处灵感来源，而不是我们要求社区遵循的方向。
+保持变更小而明确，复用 DSH 服务和 Cordis 扩展点。阅读 [AGENTS.md](AGENTS.md)、[架构](docs/architecture.zh.md)和[开发指南](docs/development.zh.md)。行为发生变化时，请更新负责说明该行为的文档及其语言对应文件。
 
-我们已经看到社区中涌现出令人期待的项目，也希望生态系统继续沿着自己的方向发展。
+运行适用于受影响组件的检查，并报告命令和结果。[测试指南](docs/testing.zh.md)说明单元、快照、Provider 和构建检查。贡献中不得包含运行时目录、本地凭据、数据库内容或生成的构建产物。
 
-探索未至之境。
+请保留上游版权、许可证声明和归属。源码贡献采用本仓库的 [MIT 许可证](LICENSE)；请披露新增依赖，以及提供的图案或其他材料的再分发条款。
+
+## 分发
+
+受支持的评估路径是[基于源码的 macOS 设置](packages/experimental/assistant/vardock/README.zh.md)。继承的 npm、桌面、Python 和网站发布脚本面向 DSH 基础设施，需要单独配置 Vardock 发布流程并审查再分发要求。发布仓库源码本身并不意味着获准再分发所有打包依赖。
+
+## 版本
+
+Vardock 版本是公开仓库上名为 `vardock-vMAJOR.MINOR.PATCH` 的附注 Git 标签，候选版本为 `vardock-vMAJOR.MINOR.PATCH-rc.N`；其他仓库通过该标签固定 Vardock 版本。`dsh-v*` 标签标记上游 DSH 发布，而不是 Vardock 版本。根 `package.json` 保留上游 DSH 版本，因为[工作区约束](scripts/check-workspace-constraints.ts)要求每个 `@deepseek-ai/dsh*` 包都使用根版本。每个标签消息都会写明该版本所基于的上游发布，例如 `Based on dsh-v0.2.2-rc.2`。
+
+要安装某个标签的 Vardock，请在该标签处克隆仓库，运行 `pnpm install --frozen-lockfile`，然后按 [macOS 设置指南](packages/experimental/assistant/vardock/README.zh.md)带模型路由运行 `pnpm vardock setup`。请保留该检出：生成的 Profile 引用其中构建的包。

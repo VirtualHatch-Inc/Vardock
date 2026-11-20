@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/assistant/vardock/README.md
+/run-vardock-from-source:
+  en: 3bbcd556eca6d17d
+  zh: d3b62fda1febb0d5
+/run-vardock-from-source/prepare-the-checkout:
+  en: 1cc95dbcabcc6e1a
+  zh: bc078129c4a76b5d
+/run-vardock-from-source/prepare-the-checkout/choose-a-model-provider:
+  en: 64715dfe54524fce
+  zh: 122d8883f04b5d80
+/run-vardock-from-source/set-up-and-start:
+  en: 83df22e109b6434e
+  zh: 5c9a11304b59cb3d
+/run-vardock-from-source/manage-the-deployment:
+  en: 7a7f320e4b005665
+  zh: 1ade11145bdf29f8
+/run-vardock-from-source/manage-the-deployment/default-grant:
+  en: aed09813211fe437
+  zh: 7b9691352a757336
+/run-vardock-from-source/diagnose-a-problem:
+  en: 0f02ed2a06cbc9e5
+  zh: 51c9c60546a9109a
+/run-vardock-from-source/try-a-first-work-request:
+  en: c3a185df8d85a2e9
+  zh: 3ff22e665fea23c6
+/run-vardock-from-source/connect-a-service:
+  en: aacf2488d5d92512
+  zh: 8ca81eda231c8e2b
+/run-vardock-from-source/run-the-integration-test:
+  en: 1741e056565699d0
+  zh: 9de207d45bfefc21
+/run-vardock-from-source/remove-a-deployment:
+  en: 4f712dc0e52d9cb3
+  zh: 4caa844980b32724
+/run-vardock-from-source/separate-service-accounts:
+  en: c8f2e104aee4015b
+  zh: 8e86eb8d9d9c74e5
+/run-vardock-from-source/linux:
+  en: af8b3a01a2a40951
+  zh: b83e296b04a2be56

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Isolierte Ausführung",
+    "description": "Führen Sie Sitzungsskripte in einem isolierten Arbeitsbereich mit Docker oder einer Apple-VM aus."
+  }
+}

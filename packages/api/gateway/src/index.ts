@@ -799,30 +799,27 @@ export class TypertGatewayService extends Service implements TypertGateway {
     const descriptor = this.resolveDescriptor(request.namespace, request.method, endpoint)
     assertExactArguments(request.args, descriptor, endpoint)
     const validated = validateArguments(descriptor, request.args, endpoint)
-    // Access precedes lookup resolution, so a refused call activates nothing.
-    // oxlint-disable-next-line typescript/no-unnecessary-condition -- other packages merge non-owner kinds into PrincipalMap.
-    if (request.peer.principal.kind !== 'owner') {
-      const resources = callResources(
-        this.ctx.typert,
-        this.resourceReaders(descriptor),
-        descriptor,
-        validated,
-        request.signal ?? NEVER_ABORTED_SIGNAL,
-      )
-      const decision: RemoteAccessDecision = resources === undefined
-        ? { kind: 'deny', reason: 'resource-invalid' }
-        : this.ctx.remoteAccess.decide({
-          principal: request.peer.principal,
-          action: `${descriptor.namespace}/${descriptor.method}`,
-          resources,
-          args: validated,
-        })
-      if (decision.kind === 'deny') {
-        throw new RemoteError('remote-access/denied', `remote access: ${endpoint}: access denied (${decision.reason})`, {
-          action: endpoint,
-          reason: decision.reason,
-        })
-      }
+    // A refused call cannot resolve a lookup or activate a receiver Context.
+    const resources = callResources(
+      this.ctx.typert,
+      this.resourceReaders(descriptor),
+      descriptor,
+      validated,
+      request.signal ?? NEVER_ABORTED_SIGNAL,
+    )
+    const decision: RemoteAccessDecision = resources === undefined
+      ? { kind: 'deny', reason: 'resource-invalid' }
+      : this.ctx.remoteAccess.decide({
+        principal: request.peer.principal,
+        action: `${descriptor.namespace}/${descriptor.method}`,
+        resources,
+        args: validated,
+      })
+    if (decision.kind === 'deny') {
+      throw new RemoteError('remote-access/denied', `remote access: ${endpoint}: access denied (${decision.reason})`, {
+        action: endpoint,
+        reason: decision.reason,
+      })
     }
     const receiverContext = await this.resolveReceiverContext(descriptor, validated, endpoint)
     const receiver: unknown = receiverContext.get(descriptor.service)

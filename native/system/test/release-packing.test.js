@@ -56,17 +56,16 @@ function fixture(t) {
   const manifests = ['package.json', 'packages/entry/package.json', 'packages/linux-x64/package.json'];
   const original = manifests.map(file => fs.readFileSync(path.join(dir, file), 'utf8'));
   const env = Object.fromEntries(Object.entries(process.env)
-    .filter(([key]) => !/KEY|TOKEN|SECRET|PASSWORD|^GITHUB_|^NODE_PATH$/i.test(key)));
+    .filter(([key]) => !/KEY|TOKEN|SECRET|PASSWORD|^NODE_PATH$/i.test(key)));
   Object.assign(env, { TMPDIR: scratch, TMP: scratch, TEMP: scratch, npm_config_cache: path.join(dir, 'npm-cache') });
   return {
     dir, binary,
-    pack: (extra = {}) => spawnSync(process.execPath, ['scripts/pack-release.mjs', 'output'], {
-      cwd: dir, env: { ...env, ...extra }, encoding: 'utf8', timeout: 120_000,
+    pack: () => spawnSync(process.execPath, ['scripts/pack-release.mjs', 'output'], {
+      cwd: dir, env, encoding: 'utf8', timeout: 120_000,
     }),
     unchanged() {
       assert.deepEqual(manifests.map(file => fs.readFileSync(path.join(dir, file), 'utf8')), original);
       assert.equal(fs.readFileSync(path.join(workspace, 'LICENSE'), 'utf8'), workspaceLicense);
-      assert.deepEqual(fs.readdirSync(scratch).filter(name => name.startsWith('native-system-pack-')), []);
     },
   };
 }
@@ -85,64 +84,42 @@ function tarFile(dir, tarball, file) {
   return result.stdout;
 }
 
-for (const workflow of [false, true]) {
-  test(`packing ${workflow ? 'workflow' : 'local'} artifacts preserves source manifests and native payloads`, { timeout: 180_000 }, (t) => {
-    const f = fixture(t);
-    const result = f.pack(workflow ? {
-      GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: 'fixture-owner/native-runtime', GITHUB_SERVER_URL: 'https://github.example.com',
-    } : {});
-    completed(result);
-    f.unchanged();
-    const files = fs.readFileSync(path.join(f.dir, 'output/publish-order.txt'), 'utf8').trim().split('\n');
-    assert.deepEqual(files, ['fixture-native-linux-x64-1.2.3.tgz', 'fixture-native-1.2.3.tgz']);
-    const manifests = files.map(file => JSON.parse(tarFile(f.dir, file, 'package.json')));
-    for (const manifest of manifests) {
-      assert.equal(manifest.repository.url, workflow ? 'git+https://github.example.com/fixture-owner/native-runtime.git' : publicRepository);
-      assert.equal(manifest.repository.type, 'git');
-    }
-    assert.equal(manifests[0].repository.directory, 'native/system/packages/linux-x64');
-    assert.equal(manifests[1].repository.directory, 'native/system/packages/entry');
-    assert.equal(manifests[1].optionalDependencies['@fixture/native-linux-x64'], '~1.2.3');
-    assert.equal(tarFile(f.dir, files[1], 'LICENSE').toString(), workspaceLicense);
-    assert.deepEqual(tarFile(f.dir, files[0], 'bin/landlock-run'), f.binary);
-    const extracted = path.join(f.dir, 'extracted');
-    fs.mkdirSync(extracted);
-    completed(spawnSync('tar', ['-xzf', path.join(f.dir, 'output', files[0]), '-C', extracted], { timeout: 120_000 }));
-    if (process.platform !== 'win32') assert.notEqual(fs.statSync(path.join(extracted, 'package/bin/landlock-run')).mode & 0o111, 0);
-  });
-}
+test('packing preserves source manifests and native payloads', { timeout: 180_000 }, (t) => {
+  const f = fixture(t);
+  completed(f.pack());
+  f.unchanged();
+  const files = fs.readFileSync(path.join(f.dir, 'output/publish-order.txt'), 'utf8').trim().split('\n');
+  assert.deepEqual(files, ['fixture-native-linux-x64-1.2.3.tgz', 'fixture-native-1.2.3.tgz']);
+  const manifests = files.map(file => JSON.parse(tarFile(f.dir, file, 'package.json')));
+  for (const manifest of manifests) {
+    assert.equal(manifest.repository.url, publicRepository);
+    assert.equal(manifest.repository.type, 'git');
+  }
+  assert.equal(manifests[0].repository.directory, 'native/system/packages/linux-x64');
+  assert.equal(manifests[1].repository.directory, 'native/system/packages/entry');
+  assert.equal(manifests[1].optionalDependencies['@fixture/native-linux-x64'], '~1.2.3');
+  assert.equal(tarFile(f.dir, files[1], 'LICENSE').toString(), workspaceLicense);
+  assert.deepEqual(tarFile(f.dir, files[0], 'bin/landlock-run'), f.binary);
+  const extracted = path.join(f.dir, 'extracted');
+  fs.mkdirSync(extracted);
+  completed(spawnSync('tar', ['-xzf', path.join(f.dir, 'output', files[0]), '-C', extracted], { timeout: 120_000 }));
+  if (process.platform !== 'win32') assert.notEqual(fs.statSync(path.join(extracted, 'package/bin/landlock-run')).mode & 0o111, 0);
+});
 
-test('a package-local license takes precedence over the workspace license during workflow packing', { timeout: 180_000 }, (t) => {
+test('a package-local license takes precedence over the workspace license', { timeout: 180_000 }, (t) => {
   const f = fixture(t);
   const entryLicense = 'Fixture entry license.\n';
   fs.writeFileSync(path.join(f.dir, 'packages/entry/LICENSE'), entryLicense);
-  completed(f.pack({ GITHUB_REPOSITORY: 'fixture-owner/native-runtime' }));
+  completed(f.pack());
   assert.equal(tarFile(f.dir, 'fixture-native-1.2.3.tgz', 'LICENSE').toString(), entryLicense);
   assert.equal(fs.readFileSync(path.join(f.dir, 'packages/entry/LICENSE'), 'utf8'), entryLicense);
   f.unchanged();
 });
 
-test('invalid workflow identity fails before deleting existing pack output', (t) => {
-  const f = fixture(t);
-  fs.mkdirSync(path.join(f.dir, 'output'));
-  fs.writeFileSync(path.join(f.dir, 'output/retained'), 'previous artifact');
-  for (const env of [{ GITHUB_ACTIONS: 'true' }, { GITHUB_REPOSITORY: 'owner/repo/extra' }, {
-    GITHUB_REPOSITORY: 'owner/repo', GITHUB_SERVER_URL: 'https://github.example.com/path',
-  }]) {
-    const result = f.pack(env);
-    assert.equal(result.error, undefined);
-    assert.equal(result.signal, null);
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /GITHUB_(?:REPOSITORY|SERVER_URL)/);
-    assert.equal(fs.readFileSync(path.join(f.dir, 'output/retained'), 'utf8'), 'previous artifact');
-    f.unchanged();
-  }
-});
-
-test('a prepack rejection cleans staging and leaves source manifests unchanged', { timeout: 180_000 }, (t) => {
+test('a prepack rejection leaves source manifests unchanged', { timeout: 180_000 }, (t) => {
   const f = fixture(t);
   fs.rmSync(path.join(f.dir, 'packages/linux-x64/bin/landlock-run'));
-  const result = f.pack({ GITHUB_REPOSITORY: 'fixture-owner/native-runtime' });
+  const result = f.pack();
   assert.equal(result.error, undefined);
   assert.equal(result.signal, null);
   assert.equal(result.status, 1);

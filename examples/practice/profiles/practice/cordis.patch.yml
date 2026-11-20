@@ -1,0 +1,5 @@
+- insert:
+    - id: inventory
+      name: ../../service.ts
+      config:
+        home: !!js process.env.VARDOCK_PRACTICE_HOME || (process.env.HOME + '/.vardock-practice')

@@ -207,6 +207,7 @@ describe('/compact human command', () => {
 
   it.each([
     ['busy', 'Compaction is unavailable because this process has an active compaction, or the agent is not idle.'],
+    ['unsupported', 'The selected model does not support conversation compaction. Start a new conversation when its context is full.'],
     ['cancelled', 'Compaction cancelled.'],
     ['changed', 'The history selected for compaction changed before it could be replaced. The attempt is recorded in the session log.'],
     ['summary', 'Compaction could not produce a useful summary. The attempt is recorded in the session log.'],

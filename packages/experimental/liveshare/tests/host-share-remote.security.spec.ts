@@ -157,16 +157,19 @@ describe('liveshare owner share management over Remote', () => {
     expect(worker.sent).toEqual([])
   })
 
-  it('serves create to the owner Peer without a Gateway resource decision', async () => {
+  it('checks the owner Peer’s create resource before applying the credential requirement', async () => {
     const { invoke, owner } = await harness()
     const decide = vi.spyOn(RemoteAccessService.prototype, 'decide')
     onTestFinished(() => { decide.mockRestore() })
-    // The owner Peer reaches the operation, whose own credential gate refuses this host; no Gateway
-    // access decision runs for an owner call.
     await expect(invoke(owner, 'create', { request: { sessionId: 'session-1' } })).rejects.toMatchObject({
       code: 'liveshareShares/owner-login-required',
     })
-    expect(decide).not.toHaveBeenCalled()
+    expect(decide).toHaveBeenCalledExactlyOnceWith({
+      principal: owner.principal,
+      action: 'liveshareShares/create',
+      resources: [{ kind: 'session', id: 'session-1' }],
+      args: { request: { sessionId: 'session-1' } },
+    })
     expect(worker.sent).toEqual([])
   })
 })

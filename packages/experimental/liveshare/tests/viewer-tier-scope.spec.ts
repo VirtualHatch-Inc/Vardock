@@ -70,6 +70,7 @@ function standInAgent(id: SessionId, cwd: string): Omit<Agent, 'ctx'> {
     },
     status: 'idle',
     send: () => {},
+    wake: () => {},
     followup: () => {},
     steer: () => {},
     inject: () => {},

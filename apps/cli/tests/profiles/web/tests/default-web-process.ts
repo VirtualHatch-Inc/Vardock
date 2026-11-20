@@ -27,12 +27,17 @@ interface DefaultWeb {
  * Boot the built Web profile under plain Node and dispose it to quiescence after an assertion callback.
  * @param test - owning Vitest case, including its timeout, cancellation, and cleanup hooks.
  * @param inspect - assertions against the running process and its ephemeral loopback URL.
- * @param options - additional profile patches and test data prepared before startup.
+ * @param options - profile patches, environment overrides, and hooks before startup and after shutdown.
  */
 export async function withDefaultWeb(
   test: TestContext,
   inspect: (app: DefaultWeb) => Promise<void>,
-  options: { patches?: readonly string[]; prepare?: (root: string) => Promise<void> } = {},
+  options: {
+    patches?: readonly string[]
+    env?: NodeJS.ProcessEnv
+    prepare?: (root: string) => Promise<void>
+    afterStop?: (root: string) => Promise<void>
+  } = {},
 ): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), 'dsh-web-default-isolation-'))
   let removal: Promise<void> | undefined
@@ -73,6 +78,7 @@ export async function withDefaultWeb(
         DSH_TELEMETRY_DISABLED: '1',
         DEEPSEEK_API_KEY: 'keyless-default-web-no-call',
         NODE_NO_WARNINGS: '1',
+        ...options.env,
       },
     })
     test.signal.throwIfAborted()
@@ -165,6 +171,7 @@ export async function withDefaultWeb(
       expect(result.signal, stderr).toBeNull()
       expect(result.code, stderr).toBe(0)
     }
+    await options.afterStop?.(root)
   } finally {
     await removeRoot()
   }

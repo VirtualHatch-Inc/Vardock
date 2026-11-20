@@ -54,6 +54,7 @@ function stubAgent(ctx: Context, rawId: string, presetScope?: ScopeKey): Agent {
     status: 'idle' as const,
     ctx: agentCtx,
     send: () => {},
+    wake: () => {},
     followup: () => {},
     steer: () => ({ outcome: Promise.resolve({ status: 'rejected' as const }) }),
     inject: () => {},

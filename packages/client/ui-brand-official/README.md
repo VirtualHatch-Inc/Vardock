@@ -1,5 +1,5 @@
 ---
-description: "Official sidebar branding and the default click-triggered pixel whale on the home page."
+description: "Client branding and the default click-triggered pixel whale on the home page."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package supplies a click-triggered pixel whale on the blank home and gives an `official` client build the DeepSeek Harness sidebar artwork. The shipped Web and Desktop compositions load it by default. Other build profiles retain their existing branding. The hero mark stays on its animated fish fallback. The background owns only temporary canvas resources and adds no model requests.
+This package supplies the sidebar and blank-home brand artwork and a click-triggered pixel whale. The shipped Web and Desktop compositions load it by default. The background owns only temporary canvas resources and adds no model requests.
 
 ## Table of Contents
 
@@ -25,11 +25,13 @@ This package supplies a click-triggered pixel whale on the blank home and gives 
 <a id="use-this-package"></a>
 ## Use this package
 
-The shipped Web and Desktop compositions already mount this plugin. Home feedback needs no extra installation or enablement; an `official` client build also registers the DeepSeek sidebar artwork.
+The shipped Web and Desktop compositions already mount this plugin. Home feedback and brand artwork require no additional installation.
 
 ### Choosing the profile
 
-`DSH_CLIENT_BUILD_PROFILE` selects which brand renders. An `official` build shows the official sidebar mark and name; any other value leaves the shell fallbacks — the fish mark and the local-build label — in place. The conversation hero shows the animated hero fish from `dsh-client-ui-conversation` regardless of profile, because that fallback is already the official mark. The plugin still loads and validates in both cases; only the sidebar artwork registration is profile-gated; the home background is shared across build profiles.
+With `DSH_CLIENT_BUILD_PROFILE` unset, the sidebar and conversation hero use the Vardock V mark from `src/client/assets/vardock-mark.svg`. The expanded sidebar displays the name from the supplied logo next to the mark. Both images have a transparent backdrop: the mark and the name use a white stroke and white lettering in the dark theme and a navy stroke and dark lettering in the light theme; the blue part stays the same. An `official` build uses the DeepSeek Harness sidebar artwork and the animated hero fish. Other values use the shell’s fish marks and local-build label. The home background is shared across build profiles.
+
+The Web shell supplies its Vardock install metadata and tab icons. Regenerate the Web icons from the mark with `pnpm --filter @deepseek-ai/dsh-web-frontend run render:app-icons`. The install icons place the light-theme mark on a white tile; the tab icon is the mark as SVG, whose navy stroke turns white under a dark browser color scheme.
 
 ### Home feedback
 
@@ -41,7 +43,7 @@ The artwork values are fixed and the row takes no configuration. This is built-i
 
 ### Replacing the brand
 
-A deployment with its own identity leaves this package out and composes another package that occupies the sidebar slots and the `conversation.hero.frame` layer — and the hero-mark slot, which this package leaves on its fallback. Occupying a slot is the only composition route; the artwork identity is not configurable.
+A deployment with its own identity replaces this package with a package occupying the sidebar brand slots and `conversation.hero.brand.mark`. It can provide its own background through `conversation.hero.frame`.
 
 -----
 
@@ -51,7 +53,7 @@ A deployment with its own identity leaves this package out and composes another 
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The two occupants install as one declaration-aware registration set: nested `ctx.slots.inject()` calls wait on the sidebar declaration, so the set works whether this row activates before or after the declarer, withdraws both occupants when the declaration collapses, and leaves no partial brand mix during HMR. The independent `conversation.hero.frame` layer owns the canvas renderer and waits for its declaration through `ctx.slots.inject()`. While `hero` is true it paints the canvas at negative `z-index`, which the frame contract places above the Conversation background and below all Conversation content. It plays on primary clicks that reach its own frame outside controls and the composer card; clicks from portaled overlays and clicks that end a text selection inside the frame are ignored. It never changes the composer or conversation state. The browser half is [`src/client/index.ts`](src/client/index.ts); the node half is an empty Loader seat. The [frame atlas](src/client/assets/breach-atlas.webp) derives from the user-supplied [showcase video](https://yinghuo-hg.deepseek.com/wuyexinrui/dev-cpu/web-showcase/orca.mp4): 1.5–7.2 seconds at 24 frames per second, sampled to 192 × 108 cells and stored as lossless WebP. Its red and green channels encode dot radius and opacity at 32 levels; the renderer reads it once after the first eligible click. The browser title is a build-environment concern (`DSH_CLIENT_TITLE`), outside the slot system.
+The two sidebar occupants install as one declaration-aware registration set: nested `ctx.slots.inject()` calls wait on the sidebar declaration, so the set works whether this row activates before or after the declarer, withdraws both occupants when the declaration collapses, and leaves no partial brand mix during HMR. The Vardock hero mark waits for its own declaration. The independent `conversation.hero.frame` layer owns the canvas renderer and waits for its declaration through `ctx.slots.inject()`. While `hero` is true it paints the canvas at negative `z-index`, which the frame contract places above the Conversation background and below all Conversation content. It plays on primary clicks that reach its own frame outside controls and the composer card; clicks from portaled overlays and clicks that end a text selection inside the frame are ignored. It never changes the composer or conversation state. The browser half is [`src/client/index.ts`](src/client/index.ts); the node half is an empty Loader seat. The [frame atlas](src/client/assets/breach-atlas.webp) derives from the user-supplied [showcase video](https://yinghuo-hg.deepseek.com/wuyexinrui/dev-cpu/web-showcase/orca.mp4): 1.5–7.2 seconds at 24 frames per second, sampled to 192 × 108 cells and stored as lossless WebP. Its red and green channels encode dot radius and opacity at 32 levels; the renderer reads it once after the first eligible click. The browser title is a build-environment concern (`DSH_CLIENT_TITLE`), outside the slot system.
 
 </details>
 

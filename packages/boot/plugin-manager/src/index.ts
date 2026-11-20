@@ -50,8 +50,10 @@ export type * from './types.ts'
 export { classifyInstallFailure, type InstallFailureFacts } from './install-failure.ts'
 export { InvalidInstallSpecError, parseInstallSpec, pinnedGitOrigin, type ParsedInstallSpec } from './install-spec.ts'
 
-/** The pnpm executable, registries, and limits for diagnostics, lookups and connection checks. */
+/** Profile management policy, pnpm executable, registries, and diagnostic and lookup limits. */
 export interface Config {
+  /** Whether the manager offers composition changes; fixed profiles retain their contributed pages and inventory. */
+  management?: 'full' | 'fixed'
   /** The pnpm executable name or path; resolved through `PATH` like the `dsh plugin` command. */
   pnpmCommand?: string
   /** Maximum retained package-operation diagnostic bytes. */
@@ -323,6 +325,7 @@ declare module '@deepseek-ai/cordis' {
 export class PluginManager extends TypertRemoteService {
   static inject = ['loader', 'profileContext']
   static Config: z<Config> = z.object({
+    management: z.union(['full', 'fixed']).default('full'),
     pnpmCommand: z.string().default('pnpm'),
     outputBytes: z.number().step(1).min(1).default(16384),
     lockWaitMs: z.number().step(1).min(0).default(120000),
@@ -349,6 +352,7 @@ export class PluginManager extends TypertRemoteService {
   private readonly ownerEntryId: string | undefined
   private readonly packageOperations = new Set<Promise<unknown>>()
   private readonly profile: ProfileContext
+  private readonly managementMode: NonNullable<Config['management']>
   private readonly outputBytes: number
   private readonly lockWaitMs: number
   private readonly inspectTimeoutMs: number
@@ -370,6 +374,7 @@ export class PluginManager extends TypertRemoteService {
     this.ownerEntryId = ctx.fiber.entry?.id
     this.ownerContext = ctx
     this.profile = ctx.profileContext
+    this.managementMode = (config as Required<Config>).management
     for (const name of this.profile.startedBundles) this.protectsManager(name)
     this.outputBytes = (config as Required<Config>).outputBytes
     this.lockWaitMs = (config as Required<Config>).lockWaitMs
@@ -491,8 +496,16 @@ export class PluginManager extends TypertRemoteService {
     })
   }
 
+  /**
+   * Read whether this profile permits manager changes.
+   * @returns The configured policy; fixed mode neither offers bundles nor changes profile composition.
+   */
+  @Remote
+  management(): 'full' | 'fixed' { return this.managementMode }
+
   /** Read installed, installation-provided, and offline Official catalog bundles, plus selected non-bundle names.
    * A dependency without a bundle patch is listed, as a `not-bundle` problem, only while it is selected.
+   * Fixed mode returns no bundles; already-selected bundles remain active.
    * @returns Package versions, manifest descriptions, the installable spec of profile dependencies, rows, optional
    * display metadata, activation selections, whether the installation offers the bundle, and removal availability.
    */
@@ -506,6 +519,7 @@ export class PluginManager extends TypertRemoteService {
 
   /** The bundle inventory before update eligibility, which is derived from each listed bundle. */
   private readBundles(): Omit<BundleInfo, 'update'>[] {
+    if (this.managementMode === 'fixed') return []
     const manifest = readProfileManifest('dsh', this.profile.dir)
     const exemptions = readProfileVersionExemptions(this.profile.dir)
     const selected = bundleSelection(manifest)
@@ -747,6 +761,7 @@ export class PluginManager extends TypertRemoteService {
       from, to: version, step: 'check',
       result: { changed: false, application: 'failed', stage: 'install', target: name, error },
     })
+    if (this.managementMode === 'fixed') return refusedBefore({ code: 'management-fixed' })
     if (typeof target === 'string') return refusedBefore({ code: 'invalid-spec', diagnostic: target })
     const { bundle } = target
     if (semver.valid(version) === null || !semver.gt(version, from)) {
@@ -1372,34 +1387,36 @@ export class PluginManager extends TypertRemoteService {
       ...version === undefined ? {} : { version },
       ...request.enabled === undefined ? {} : { enabled: request.enabled } }
     this.reportOperation({ ...facts, time: new Date().toISOString(), phase: 'started' })
-    let settled: ChangeResult
-    try {
-      settled = await withFileLock(join(this.profile.dir, 'package.json'), async () => {
-        this.abort.signal.throwIfAborted()
-        const before = this.diskState()
-        const result: ChangeResult = { ...request, changed: false,
-          ...this.ownerContext.get('hmr') !== undefined ? { application: 'applied' } : { application: 'restart-required', restartReason: 'no-hmr' } }
-        try {
-          const outcome = await operation(result)
-          if (outcome !== undefined) result.application = outcome
-          // A reload that waits for a restart leaves the change saved but not applied.
-          else if (result.application === 'applied' && result.restartReason !== undefined) result.application = 'restart-required'
-        } catch (error) {
-          if (error instanceof InstallCancelledError) {
-            result.application = 'cancelled'
-          } else {
-            result.application = 'failed'
-            result.error = managementError(error)
+    let settled: ChangeResult = { ...request, changed: false, application: 'failed', error: { code: 'management-fixed' } }
+    if (this.managementMode === 'full') {
+      try {
+        settled = await withFileLock(join(this.profile.dir, 'package.json'), async () => {
+          this.abort.signal.throwIfAborted()
+          const before = this.diskState()
+          const result: ChangeResult = { ...request, changed: false,
+            ...this.ownerContext.get('hmr') !== undefined ? { application: 'applied' } : { application: 'restart-required', restartReason: 'no-hmr' } }
+          try {
+            const outcome = await operation(result)
+            if (outcome !== undefined) result.application = outcome
+            // A reload that waits for a restart leaves the change saved but not applied.
+            else if (result.application === 'applied' && result.restartReason !== undefined) result.application = 'restart-required'
+          } catch (error) {
+            if (error instanceof InstallCancelledError) {
+              result.application = 'cancelled'
+            } else {
+              result.application = 'failed'
+              result.error = managementError(error)
+            }
           }
-        }
-        if (result.application !== 'restart-required') delete result.restartReason
-        result.changed = before !== this.diskState()
-        this.ownerContext.emit('plugin-manager/changed', { reason })
-        return result
-      }, { waitMs: this.lockWaitMs })
-    } catch (error) {
-      this.reportOperation({ ...facts, time: new Date().toISOString(), phase: 'unknown' })
-      throw error
+          if (result.application !== 'restart-required') delete result.restartReason
+          result.changed = before !== this.diskState()
+          this.ownerContext.emit('plugin-manager/changed', { reason })
+          return result
+        }, { waitMs: this.lockWaitMs })
+      } catch (error) {
+        this.reportOperation({ ...facts, time: new Date().toISOString(), phase: 'unknown' })
+        throw error
+      }
     }
     const refusedVersion = reason === 'install'
       ? settled.error?.incompatible?.find(plugin => plugin.name === facts.target)?.version

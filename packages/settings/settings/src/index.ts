@@ -165,6 +165,23 @@ function cloneJsonShaped(root: object): Record<string, unknown> {
   return clone(root, '$') as Record<string, unknown>
 }
 
+/** Config key the Loader evaluates as a `!!js` expression wherever it appears. */
+const EXPRESSION_KEY = '__jsExpr'
+
+/**
+ * Refuse write input that would persist as a `!!js` expression, which the Loader
+ * evaluates in the Host process; expressions are written only by editing the profile patch.
+ * @param value - caller-supplied form value.
+ * @throws TypeError when any object in the value carries the expression key.
+ */
+function refuseExpressions(value: unknown): void {
+  if (Array.isArray(value)) value.forEach(refuseExpressions)
+  else if (isPlainObject(value)) {
+    if (Object.hasOwn(value, EXPRESSION_KEY)) throw new TypeError('Config input contains a configuration expression')
+    Object.values(value).forEach(refuseExpressions)
+  }
+}
+
 /**
  * Layer `over` onto `under`: plain objects merge recursively, every other
  * value (arrays included) replaces the lower layer wholesale. `over` never
@@ -347,6 +364,7 @@ export class SettingsForms extends Service {
    */
   async update(ns: string, patch: object, expectedRevision?: number): Promise<void> {
     const input = cloneJsonShaped(patch)
+    refuseExpressions(input)
     await this.write(ns, current => mergeLayers(current, input) as Record<string, unknown>, expectedRevision)
   }
 
@@ -357,6 +375,7 @@ export class SettingsForms extends Service {
    */
   async replace(ns: string, section: object, expectedRevision?: number): Promise<void> {
     const input = cloneJsonShaped(section)
+    refuseExpressions(input)
     await this.write(ns, (_current, base) => mergeLayers(base, input) as Record<string, unknown>, expectedRevision)
   }
 
@@ -366,6 +385,10 @@ export class SettingsForms extends Service {
    * @param expectedRevision Revision returned by describe.
    */
   async mutate(ns: string, ops: readonly SettingsPathOp[], expectedRevision?: number): Promise<void> {
+    for (const op of ops) {
+      if (op.path.includes(EXPRESSION_KEY)) throw new TypeError('Config path addresses a configuration expression')
+      if (op.op === 'set') refuseExpressions(op.value)
+    }
     await this.write(ns, (current, base, schema) => ops.reduce((value, op) => {
       if (op.op === 'set') return applyPathOp(value, op, schema)
       const parent = op.path.slice(0, -1).reduce<unknown>((node, key) => member(node, key), value)

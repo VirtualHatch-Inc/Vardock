@@ -68,6 +68,8 @@ Queue 预览启用空白折叠和文档边缘 trim，保留 emoji，并使用 CS
 <a id="shell-and-standard-props"></a>
 ## Shell 与标准 props
 
+配置档可设置 `showWorkspacePicker: false`，隐藏空输入框上方的工作区标签和弹出选择器，不改变导航和文件接收。`heroTitle` 用产品名替换本地化标题，`showHeroBadge: false` 隐藏预览标记，`plainPlaceholder: true` 为首页和普通输入框选择不含命令或引用提示的本地化消息占位文本。默认保留标准展示。 这些值通过 Host 设置镜像传递给浏览器。
+
 root 作用域的 hoc Slot `conversation.hero.frame` 在所有阶段都包裹滚动区，因此首页结束时各层不会让输入框重新挂载。它的所有者 props 提供 `hero`，仅在独立 Conversation 的空白首页时为 true。各层需让滚动区仍是 body 的直接 flex 子项，例如使用 `display: contents`。首页阶段，绘制背景的 Conversation 根元素隔离层叠上下文：层中负 `z-index` 的装饰画在该背景之上、所有 Conversation 内容之下，包括输入区的接管面板。其他阶段根元素不参与层叠隔离，未经 portal 的 Conversation 浮层仍能盖住悬浮在中栏上方的 AppFrame 元素。各层自行处理输入。没有占用者时，body 保持原样。
 
 宽度小于 768px 时，Web 的 View 标签与页头的 20px 左内边距对齐。桌面客户端和较宽的 Web 窗口保留标签额外的 8px 左内边距。
@@ -98,13 +100,15 @@ root 作用域的 `conversation.session.header.views.actions` list 有注册项�
 
 输入框通过会话作用域的 `useAccess` 钩子读取所在 Session 的访问答案：访问快照不含 `session/prompt` 时隐藏发送，不含 `session/cancel` 时隐藏停止，附件接收跟随 `fileUploads/upload`。没有 Session 的输入框尚无答案，保留普通控件。发送与停止都只对按钮生效——键盘提交或 Esc-Esc 序列仍会到达 Host，由 Host 拒绝并上报失败。这些界面判断不替代 Host 授权。
 
+界面操作可调用 Session 作用域内 Conversation 服务的 `prepareEmptyDraft`，将文本和浏览器文件放入草稿以供检查。输入框保留已有内容或锁定的草稿，通过常规附件队列上传接收的文件，由用户发送消息。
+
 `SessionInputShell` 通过私有 [DraftEditorRuntime](src/client/input/editor/runtime.ts) 为每个 Session 持有一个 Lexical editor，同时保留提交、附件选择和恢复决策。[DraftEditor](src/client/input/editor/DraftEditor.tsx) 呈现借用的 editor；InputBar 保留钩子与 refs，并通过 [view-binding](src/client/input/editor/view-binding.ts) 安装 DOM 行为。编辑器类型位于 [draft-editor.ts](src/client/contract/draft-editor.ts)，共享输入和提交类型位于 [input.ts](src/client/contract/input.ts)。编辑器后台更新会保留草稿选区，不修改文档选区或从其他控件夺回焦点；显式聚焦 Composer 时恢复其选区。这一拆分不支持同一 Session 同时挂载多个可编辑 root；[两阶段隔离提案](../../../.agents/notes/proposed/architecture/2026-09-14-composer-model-and-draft-editor.zh.md) 定义剩余工作。
 
 草稿中的普通文字及文件、目录、Session 引用胶囊在切换 Session 和刷新后保留。公开输入方法接受文本；内部恢复和工作区携带保留结构化引用。输入模型在首次对外读取前导入保存内容；React 只挂载同一编辑器并绑定现有 Conversation store 写入回调。原存储 key 兼容旧字符串，新写入保存不含运行时节点 ID 的语义快照。等待 skill 目录不会阻塞编辑：斜杠名称保持普通文字，直到匹配的目录项到达。目录到达只重匹配当前文字，不改变胶囊、选区或 Undo 历史。浏览器持有的附件 File 对象不由这一机制持久化。[草稿初始化决策](../../../.agents/notes/implemented/architecture/2026-09-30-structured-draft-initialization.zh.md)规定所有权与恢复流程。
 
 已认领的命令是草稿开头的一个原子 chip，认领与该 chip 同生共灭。删除参数和分隔空格不影响认领。光标到达 chip 边缘时，第一次 Backspace 或 Delete 选中整个 chip，再按一次才删除它并释放认领，参数保留为普通文字；按其他键、点击或移动光标会取消选中。在 chip 前插入文字或换行会把它还原为字面 token 并释放认领，撤销会连同认领一起恢复被删除的 chip。持久化的草稿记录 chip 的 token，刷新后命令目录解析出认领即重建 chip；在此之前先编辑了草稿则保留字面 token，Enter 仍会把它作为命令提交。所有命令和语言使用相同规则，包括 `/goal`、`/目标`、`/plan` 和 `/计划`。输入法组合输入期间，命令提示和普通占位文字持续隐藏，直到编辑器提交最终文字且对应输入为空时才重新显示。
 
-工作区选择使用 `uiWorkspace.openWorkspace` 准备目标并提交导航。草稿内容（包括结构化引用）和附件仅在该请求仍为当前请求、且没有在途提交时，通过它的同步准备回调搬移；后续导航、所有者释放或在途提交都会把原草稿留在它的 Session 中。
+工作区选择使用 `uiWorkspace.openWorkspace` 准备目标并提交导航。草稿内容（包括结构化引用）和附件仅在该请求仍为当前请求、且没有在途提交时，通过它的同步准备回调搬移；后续导航、所有者释放或在途提交都会把原草稿留在它的 Session 中。如果导航[打开已注册的会话入口](../ui-workspace/README.zh.md#understand-the-implementation)，选择器显示所选 Session 的实际工作区。
 
 本包占据 root 作用域 `main` 中的 `conversation` key。其 `main.conversation` 外壳将常驻的 `conversation.header` 放在可选 Session 的 `conversation.content` Component Factory 外。未选中 Session 时，头部仍承载根作用域导航；标题、操作和 View 标签保留在严格 Session 子组件中。Factory 拥有共享正文与 Composer，通过其标准 Hook 读取当前 Session，并公开 strict-Session `views` 与 root-scoped `widthControls` 两个局部位置。默认 adapter 渲染现有 `conversation.session` entry，主 occurrence 选择宽度拖拽条；嵌入式 occurrence 可以替换 `views`、省略拖拽条，且不渲染主 Header。共享正文与 Composer 注册 queue dock 和 Todo dock。Todo dock 在 composer 上方使用共享面板 elevation；其中的行分别以共享 idle、ongoing 与 done 标记表示待处理、进行中与已完成。`ctx.uiSession.provide()` 从同一个 Session binding 物化 Conversation 与 input source，并将 `inputActions` 作为稳定标准 prop 提供。
 
@@ -144,8 +148,12 @@ Send 和 Stop 按钮禁用时不显示提示气泡，轮次结束后由 Stop 切
 
 在获得焦点的 Chat 或 Composer 中连续独立按下两次 Esc，可停止当前运行轮次并保留排队消息。间隔由 shortcuts 插件的 `stopSequenceMs` 配置决定，默认 500 ms。菜单、审批、模态层、终端、内嵌网页、输入法、重复按键，以及输入区域、Session 或轮次变化会清空序列。快捷键与 Stop 按钮调用同一作用域取消操作。插件将 Stop 注册为 `input` 展示分组中的固定操作。该注册使普通 Esc 不能分配给可编辑快捷键，并为 Stop 按钮的悬停和键盘聚焦提示提供 `Esc Esc` 序列。
 
+插件可通过 `ctx.uiConversation.registerVerbatimAttachmentPolicy` 为选定的普通会话启用原样附件。在这些会话中，输入框会逐字节上传选择、粘贴或拖入的文件，包括图片和具有桌面宿主路径的文件。草稿使用普通文件卡片和暂存上传凭证。目录仍按现有规则处理。
+
 <a id="temporary-composer-entries"></a>
 ## 临时 composer entry
+
+需要在审批或其他临时 composer 接管期间保持可见的会话状态控件，应注册在 `conversation.input.status`。
 
 `conversation.composer` 是通用 chain，其完整 owner currency 为：
 

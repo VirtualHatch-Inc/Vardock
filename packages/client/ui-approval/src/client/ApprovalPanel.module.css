@@ -39,6 +39,8 @@
 }
 
 .headline {
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--dsw-alias-label-primary);
   font-size: 15px;
   font-weight: 500;
@@ -158,6 +160,11 @@
   font-size: 13px;
   line-height: 20px;
   word-break: break-all;
+}
+
+.plainDetail {
+  margin: 0;
+  white-space: pre-wrap;
 }
 
 .actionRow {

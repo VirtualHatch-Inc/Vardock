@@ -1,0 +1,49 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/operation-broker/README.md
+/:
+  en: fbbc195bc9ebbb26
+  zh: 469a799ce0f68bb8
+/deepseek-ai-dsh-operation-broker:
+  en: 7b75fc6712be48d5
+  zh: 99f404142b1dd876
+/deepseek-ai-dsh-operation-broker/summary:
+  en: d58996907dd9d54b
+  zh: e32fd58f018df1b3
+/deepseek-ai-dsh-operation-broker/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: dffaa4786f6c7978
+/deepseek-ai-dsh-operation-broker/use-this-package:
+  en: 808fc218f1092a34
+  zh: 8d2249441da328af
+/deepseek-ai-dsh-operation-broker/use-this-package/example-route:
+  en: 496e84b20481cf14
+  zh: 105d4514b5a02499
+/deepseek-ai-dsh-operation-broker/use-this-package/private-certificate-authorities:
+  en: d9e1057753af60ea
+  zh: d1fa402d660233f4
+/deepseek-ai-dsh-operation-broker/use-this-package/status-endpoint:
+  en: d8e3e8fe6b65fb5a
+  zh: 6837a53c458bce30
+/deepseek-ai-dsh-operation-broker/use-this-package/mcp-tools:
+  en: ba4bbfeb14059583
+  zh: 693bb6ba276b2d77
+/deepseek-ai-dsh-operation-broker/understand-the-implementation:
+  en: 0010f4911a442644
+  zh: 728e51fa28cd3bd4
+/deepseek-ai-dsh-operation-broker/further-exploration:
+  en: 93f9be5bb03c28fd
+  zh: 09088d30377f5498
+/deepseek-ai-dsh-operation-broker/model-experience:
+  en: 605bb46d9be26938
+  zh: 607205a91066c180
+/deepseek-ai-dsh-operation-broker/model-experience/kv-cache-effect:
+  en: 9ab340d500e645f0
+  zh: 43dab9825e52f0e5
+/deepseek-ai-dsh-operation-broker/known-limitations-and-deferred-work:
+  en: d70534f0306030f0
+  zh: 0060d71e9f6b38e1
+/deepseek-ai-dsh-operation-broker/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: a4a4e16659fe3449

@@ -57,7 +57,7 @@ function standInAgent(id: SessionId, cwd: string): Omit<Agent, 'ctx'> {
       nextTurn: [], nextStep: [], clear: unsupported, append: unsupported,
       prepend: unsupported, replace: unsupported, remove: unsupported, splice: unsupported,
     },
-    send: () => {}, followup: () => {}, steer: () => {}, inject: () => {}, cancel: () => {},
+    send: () => {}, wake: () => {}, followup: () => {}, steer: () => {}, inject: () => {}, cancel: () => {},
     whenIdle: () => Promise.resolve(),
     runMaintenance: task => task(new AbortController().signal),
   }

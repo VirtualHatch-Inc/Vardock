@@ -1,0 +1,54 @@
+{
+  "initial": [
+    {
+      "name": "exec",
+      "description": "Run a shell script in this work Session’s isolated /workspace. The supplied Linux work image provides POSIX /bin/sh and Node.js 24 with built-in fetch and standard Linux utilities. Python and curl are not installed. Use POSIX shell syntax; after a heredoc terminator, put the next command on a new line without a leading semicolon. This is an external execution service: /workspace is writable. The model provider’s native filesystem sandbox does not apply to this tool. Files persist across calls and explicit continuations. The workspace has no direct network access or Host files. A configured gateway can allow selected network destinations. When DSH_BROKER_URL is set, submit external operations there with Node.js fetch as POST JSON {requestKey, action, body}, using a UUID requestKey, an operator-configured action, exact JSON text in body, and Authorization: Bearer from DSH_BROKER_TOKEN. Keep that token private. Scripts may run automatically under the operator’s policy. External requests wait for owner approval unless a configured rule admits them. Check the JSON response: status is the observed HTTP status, or toolError says whether a tool call’s result was marked as an error; code indicates a failure; body is the service’s response text when the action returns one and this work may receive it, and bodyOmitted says why it is missing; not-permitted means the request was sent but this work may not receive the response. The response includes an operation ID for inspection. An HTTP response does not verify business completion. When an operation’s outcome is uncertain, for example when its response is missing, report the uncertain outcome with its operation ID and do not submit the same request again. Each call stops its processes before returning. Inspect the workspace before retrying an interrupted command.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "POSIX shell script to run from /workspace."
+          }
+        },
+        "required": [
+          "command"
+        ]
+      }
+    },
+    {
+      "name": "report_work",
+      "description": "Persist this worker request outcome and end its turn. Imported-file work cannot be reported complete unless a nonerror exec result was observed in this work; that does not verify file use or reported values. Base computed values and file contents on execution output, never a filename or path. If a needed permission or tool is missing, use failed, name it, and give no invented result. Use needs_input for a question or required decision. Include evidence and any partial effects. The main assistant receives this report.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "Explicit outcome.",
+            "enum": [
+              "completed",
+              "needs_input",
+              "failed"
+            ]
+          },
+          "result": {
+            "type": "string",
+            "description": "Result with evidence, or a precise question or failure."
+          },
+          "artifacts": {
+            "type": "array",
+            "description": "Paths relative to the worker workspace of the files the owner asked to receive. Each file uses one execution slot; put evidence in result instead of attaching it.",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "status",
+          "result"
+        ]
+      }
+    }
+  ],
+  "changes": []
+}

@@ -55,6 +55,8 @@ const DIRECT_ROUTE: ProxyRoute = { proxied: false }
 
 /** Optional dispatcher transport choices shared by global installation and per-request construction. */
 export interface DispatcherOptions {
+  /** PEM trust roots for the destination TLS connection; proxy TLS keeps its own trust. */
+  readonly ca?: string
   /**
    * Whether the dispatcher may negotiate HTTP/2. Unset keeps undici's own default; pass `false`
    * for a caller that cannot tolerate an idle h2 session's informational `UND_ERR_INFO` error.
@@ -171,11 +173,15 @@ async function createPolicyDispatcher(policy: ProxyPolicy, options: DispatcherOp
       // undici declares this parameter as `Object`, discarding the pool options it actually passes.
       const passed = passedOptions as Pool.Options
       const proxy = proxyForUrl(policy, new URL(origin.toString()))
-      if (proxy !== undefined) return new ProxyAgent({ ...passed, uri: proxy, ...h2 })
+      if (proxy !== undefined) return new ProxyAgent({
+        ...passed, uri: proxy, ...h2, ...options.ca === undefined ? {} : { requestTls: { ca: options.ca, rejectUnauthorized: true } },
+      })
       // What undici's own default factory builds for these options, which `factory` replaces
       // wholesale. It reaches for a bare `Client` only at `connections: 1`, an option this
       // dispatcher never carries: it is constructed with undici's defaults.
-      return new Pool(origin, { ...passed, ...h2 })
+      return new Pool(origin, {
+        ...passed, ...h2, ...options.ca === undefined ? {} : { connect: { ca: options.ca, rejectUnauthorized: true } },
+      })
     },
   })
 }
@@ -338,7 +344,7 @@ export async function installProxyFromEnvironment(
  * shared across a caller's requests keeps its connection pools.
  *
  * @param env - the launch environment the policy resolves from.
- * @param options - optional dispatcher overrides; `allowH2: false` pins the transport to HTTP/1.1.
+ * @param options - destination trust roots and optional HTTP/2 override; `allowH2: false` pins HTTP/1.1.
  * @returns a dispatcher the caller closes.
  */
 export async function createRouteDispatcher(
@@ -349,7 +355,9 @@ export async function createRouteDispatcher(
   const dispatcher = policy.source === 'none'
     ? await (async () => {
       const { Agent } = await import('undici')
-      return new Agent(h2Options(options))
+      return new Agent({
+        ...h2Options(options), ...options.ca === undefined ? {} : { connect: { ca: options.ca, rejectUnauthorized: true } },
+      })
     })()
     : await createPolicyDispatcher(policy, options)
   return dispatcher

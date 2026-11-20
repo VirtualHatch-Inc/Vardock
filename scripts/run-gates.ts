@@ -1,5 +1,5 @@
 /**
- * Run local and CI quality gates with bounded in-process scheduling.
+ * Run local quality gates with bounded in-process scheduling.
  *
  * Package scripts own public aggregate names; this runner owns their validated
  * dependency graphs, scheduler environment, and process diagnostics.
@@ -9,27 +9,11 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
 import { resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
-import { CLIENT_BUILD_PROFILE_SELECTOR } from './client-build-environment.ts'
-import { COVERAGE_EXEMPT_ENV, coverageExemptHeavySuites } from './coverage-exempt.ts'
-import { COVERAGE_PARTITIONS_ENV, parseCoveragePartitionCount } from './coverage-partitions.ts'
-import { LOCAL_TEST_PARALLELISM_CAP, defaultParallelism, describeDefaultParallelism } from './parallelism.ts'
+import { defaultParallelism, describeDefaultParallelism } from './parallelism.ts'
 import { pnpmInvocation } from './pnpm-invocation.ts'
 
 /** A named aggregate exposed by the gate runner. */
 export type Mode =
-  | 'ci-primary'
-  | 'ci-linux-primary'
-  | 'ci-static'
-  | 'ci-lint-contracts-ready'
-  | 'ci-coverage'
-  | 'ci-unit'
-  | 'ci-bench'
-  | 'ci-snapshot'
-  | 'ci-artifacts'
-  | 'ci-consumers'
-  | 'ci-windows-blocking'
-  | 'ci-windows-complete'
-  | 'ci-windows-observational-ready'
   | 'node-compat'
   | 'check-all'
   | 'hygiene'
@@ -48,19 +32,9 @@ export interface Gate {
   command: string
   args: string[]
   needs?: string[]
-  /** Gate ids that must settle, regardless of outcome, before this gate starts. */
-  after?: string[]
   env?: Record<string, string | undefined>
   /** Include this leaf in the build-free documentation aggregate. */
   quick?: boolean
-  /** Keep a failure visible without failing the aggregate. */
-  allowFailure?: boolean
-  /** Extra attempts after a failed run, for a gate whose failure can come from one remote fetch. */
-  retries?: number
-  /** Wait before each retry, in milliseconds; default 0. */
-  retryDelayMs?: number
-  /** Write child output as it arrives instead of buffering it until completion. */
-  streamOutput?: boolean
 }
 
 /** The observed outcome of one gate process. */
@@ -97,10 +71,10 @@ export interface ConcurrencyDefault {
 type GateExecutor = (gate: Gate, signal?: AbortSignal) => Promise<GateResult>
 type ResultObserver = (result: GateResult) => void
 
-/** Worker cap of the documentation and hygiene aggregates, locally and in CI, whose leaves each build a full ts.Program. */
+/** Worker cap of the documentation and hygiene aggregates, whose leaves each build a full ts.Program. */
 const PROGRAM_MODE_CAP = 8
 
-/** CI pins this minor in .github/workflows/ci.yml; its compatibility leg owns the built CLI smoke. */
+/** Node minor whose `node-compat` run owns the built CLI smoke. */
 export const BUILD_BACKED_NODE_COMPAT_VERSION = '24.9'
 
 const root = resolve(import.meta.dirname, '..')
@@ -110,9 +84,6 @@ if (import.meta.main) {
 
 async function main(args: string[]): Promise<number> {
   const mode = parseMode(args[0])
-  const workerEnv = ciWorkerEnvironment(mode, process.env)
-  Object.assign(process.env, workerEnv)
-  if (Object.keys(workerEnv).length > 0) console.log(`run-gates: worker settings ${JSON.stringify(workerEnv)}`)
   const gates = gatesForMode(mode)
   return runAggregate(mode, gates, defaultConcurrency(mode, gates.length))
 }
@@ -121,11 +92,11 @@ async function main(args: string[]): Promise<number> {
  * Run one aggregate through the real child-process executor with the CLI's
  * environment-selected scheduling and reporting: `DSH_GATE_CONCURRENCY`
  * overrides the worker default, `DSH_GATE_FAIL_FAST=1` stops at the first
- * blocking failure, and every settled gate plus a final summary is printed.
+ * failure, and every settled gate plus a final summary is printed.
  * @param name - aggregate name printed in the start line.
  * @param gates - complete aggregate to execute.
  * @param concurrencyDefault - worker count used when `DSH_GATE_CONCURRENCY` is unset.
- * @returns 1 when a blocking gate failed or was skipped, otherwise 0.
+ * @returns 1 when a gate failed or was skipped, otherwise 0.
  */
 export async function runAggregate(name: string, gates: Gate[], concurrencyDefault: ConcurrencyDefault): Promise<number> {
   const concurrencyOverride = process.env.DSH_GATE_CONCURRENCY
@@ -135,13 +106,11 @@ export async function runAggregate(name: string, gates: Gate[], concurrencyDefau
     : '$DSH_GATE_CONCURRENCY'
   const failFast = flagEnabled('DSH_GATE_FAIL_FAST')
   const startedAt = performance.now()
-  console.log(`run-gates: ${name} running ${gates.length} gate(s) with ${maxConcurrency} worker(s) from ${concurrencySource}${failFast ? ', fail-fast after first blocking failure' : ''}.`)
+  console.log(`run-gates: ${name} running ${gates.length} gate(s) with ${maxConcurrency} worker(s) from ${concurrencySource}${failFast ? ', fail-fast after first failure' : ''}.`)
 
-  const results = await runGates(gates, maxConcurrency, runGateWithRetry, printResult, cliGateOptions(failFast))
+  const results = await runGates(gates, maxConcurrency, runGate, printResult, cliGateOptions(failFast))
   printSummary(results, performance.now() - startedAt)
-  return results.some(result => result.gate.allowFailure !== true && (result.status === 'failed' || result.status === 'skipped'))
-    ? 1
-    : 0
+  return results.some(result => result.status === 'failed' || result.status === 'skipped') ? 1 : 0
 }
 
 /**
@@ -157,19 +126,6 @@ export function cliGateOptions(failFast: boolean): RunGatesOptions {
 
 function parseMode(raw: string | undefined): Mode {
   switch (raw) {
-    case 'ci-primary':
-    case 'ci-linux-primary':
-    case 'ci-static':
-    case 'ci-lint-contracts-ready':
-    case 'ci-coverage':
-    case 'ci-unit':
-    case 'ci-bench':
-    case 'ci-snapshot':
-    case 'ci-artifacts':
-    case 'ci-consumers':
-    case 'ci-windows-blocking':
-    case 'ci-windows-complete':
-    case 'ci-windows-observational-ready':
     case 'node-compat':
     case 'check-all':
     case 'hygiene':
@@ -179,7 +135,7 @@ function parseMode(raw: string | undefined): Mode {
       return raw
     default:
       throw new Error(
-        `run-gates: expected mode ci-primary | ci-linux-primary | ci-static | ci-lint-contracts-ready | ci-coverage | ci-unit | ci-bench | ci-snapshot | ci-artifacts | ci-consumers | ci-windows-blocking | ci-windows-complete | ci-windows-observational-ready | node-compat | check-all | hygiene | doc-sync | doc-quick | i18n, got ${JSON.stringify(raw)}.`,
+        `run-gates: expected mode node-compat | check-all | hygiene | doc-sync | doc-quick | i18n, got ${JSON.stringify(raw)}.`,
       )
   }
 }
@@ -189,17 +145,15 @@ function parseMode(raw: string | undefined): Mode {
  * @param selectedMode - aggregate whose resource posture applies.
  * @param total - number of gates in the aggregate.
  * @param cpus - CPU count Node reports for this process.
- * @param env - environment whose `CI` value selects the CI or local [worker budget](./parallelism.ts).
  * @returns the default worker count and its diagnostic source.
  */
 export function defaultConcurrency(
   selectedMode: Mode,
   total: number,
   cpus = availableParallelism(),
-  env: NodeJS.ProcessEnv = process.env,
 ): ConcurrencyDefault {
-  const budget = defaultParallelism(env, cpus)
-  const budgetSource = describeDefaultParallelism(env, cpus)
+  const budget = defaultParallelism(cpus)
+  const budgetSource = describeDefaultParallelism(cpus)
   // These modes cap workers: several doc gates each build a full ts.Program,
   // so an uncapped default on a large host trades wall clock for memory blowups.
   const localCap = selectedMode === 'check-all'
@@ -211,48 +165,6 @@ export function defaultConcurrency(
     workers: Math.min(total, modeLimit),
     source: localCap ? `${budgetSource}, ${selectedMode} cap ${String(PROGRAM_MODE_CAP)}` : budgetSource,
   }
-}
-
-/**
- * Fill CI worker defaults from the [worker budget](./parallelism.ts) without replacing explicit overrides.
- * Coverage shares one budget; artifact readers share CPUs with sibling commands.
- * @param mode - aggregate selected by the caller.
- * @param env - inherited worker overrides, including serial reference settings, and the `CI` value that selects the budget.
- * @param cpus - CPU count Node reports for this runner process.
- * @returns environment additions for this aggregate and its children.
- */
-export function ciWorkerEnvironment(
-  mode: Mode,
-  env: NodeJS.ProcessEnv,
-  cpus = availableParallelism(),
-): Record<string, string> {
-  // ci-unit's gates read none of these settings, while the inventory it runs
-  // reads the same variables (run-gates.spec.ts builds coverage gates from
-  // DSH_COVERAGE_PARTITIONS; the oxlint contract spawns run-oxlint, which
-  // reads DSH_OXLINT_THREADS), so the aggregate leaves the environment as
-  // `pnpm run test` finds it.
-  if (!mode.startsWith('ci-') || mode === 'ci-unit') return {}
-  const budget = defaultParallelism(env, cpus)
-  const testBudget = defaultParallelism(env, cpus, LOCAL_TEST_PARALLELISM_CAP)
-  const additions: Record<string, string> = {}
-  const setDefault = (name: string, value: number): void => {
-    if (env[name] === undefined || env[name] === '') additions[name] = String(value)
-  }
-  const shared = Math.max(1, Math.floor(budget / 2))
-  setDefault('DSH_OXLINT_THREADS', shared)
-  setDefault('DSH_PUBLINT_CONCURRENCY', shared)
-  setDefault('DSH_SNAPSHOT_MAX_WORKERS', 1)
-  setDefault('DSH_SNAPSHOT_MAX_CONCURRENCY', shared)
-  setDefault('DSH_WEB_SNAPSHOT_WORKERS', env.DSH_GATE_CONCURRENCY === '1' ? 1 : budget)
-  setDefault('DSH_COVERAGE_MAX_WORKERS', testBudget)
-  const coverageBudget = env.DSH_COVERAGE_MAX_WORKERS || String(testBudget)
-  const total = Number(coverageBudget)
-  if (!Number.isSafeInteger(total) || total < 1) {
-    throw new Error(`run-gates: DSH_COVERAGE_MAX_WORKERS must be a positive integer, got ${JSON.stringify(coverageBudget)}.`)
-  }
-  const instrumented = Math.max(1, total - Math.max(1, Math.floor(total / 3)))
-  if (instrumented > 1) setDefault(COVERAGE_PARTITIONS_ENV, instrumented)
-  return additions
 }
 
 function concurrencyFromEnv(name: string, fallback: number): number {
@@ -275,25 +187,6 @@ function pnpmScript(id: string, script: string, options: Partial<Gate> = {}): Ga
   }
 }
 
-/** Build official client artifacts inside a CI aggregate without changing sibling gate environments. */
-function ciBuildGate(id = 'build', options: Partial<Gate> = {}): Gate {
-  return pnpmScript(id, 'build', {
-    ...options,
-    env: { ...options.env, [CLIENT_BUILD_PROFILE_SELECTOR]: 'official' },
-  })
-}
-
-/**
- * Emit the artifacts every artifact consumer reads, without the aggregate
- * test and script type checks that the master lanes own.
- */
-function ciArtifactBuildGate(id = 'build', options: Partial<Gate> = {}): Gate {
-  return pnpmScript(id, 'build:artifacts', {
-    ...options,
-    env: { ...options.env, [CLIENT_BUILD_PROFILE_SELECTOR]: 'official' },
-  })
-}
-
 function pnpmExec(id: string, args: string[], options: Partial<Gate> = {}): Gate {
   return {
     id,
@@ -311,42 +204,6 @@ function pnpmExec(id: string, args: string[], options: Partial<Gate> = {}): Gate
  */
 export function gatesForMode(selected: Mode): Gate[] {
   switch (selected) {
-    case 'ci-primary':
-      return ciPrimaryGates()
-    case 'ci-linux-primary':
-      return [...ciPrimaryGates(), webSnapshotGate(['build'])]
-    case 'ci-static':
-      return ciStaticGates({ ownsBuild: false })
-    case 'ci-lint-contracts-ready':
-      return [
-        lintGate(),
-        pnpmScript('duplication', 'duplication'),
-      ]
-    case 'ci-coverage':
-      return coverageGates()
-    case 'ci-unit':
-      return ciUnitGates()
-    case 'ci-bench':
-      return [pnpmExec('bench', ['tsx', 'scripts/run-ci-bench.ts'], { label: 'performance benchmarks' })]
-    case 'ci-snapshot':
-      return [ciBuildGate(), snapshotGate()]
-    case 'ci-artifacts':
-      return ciArtifactGates()
-    case 'ci-consumers':
-      return ciConsumerGates()
-    case 'ci-windows-blocking':
-      return ciWindowsBlockingGates()
-    case 'ci-windows-complete':
-      return ciWindowsCompleteGates()
-    case 'ci-windows-observational-ready':
-      // The caller owns the successful workspace build; all diagnostics remain.
-      return ciWindowsObservationalGates()
-        .filter(gate => gate.id !== 'build')
-        .map(gate => ({
-          ...gate,
-          ...gate.needs === undefined ? {} : { needs: gate.needs.filter(id => id !== 'build') },
-          ...gate.after === undefined ? {} : { after: gate.after.filter(id => id !== 'build') },
-        }))
     case 'node-compat':
       return nodeCompatGates()
     case 'check-all':
@@ -355,8 +212,6 @@ export function gatesForMode(selected: Mode): Gate[] {
         pnpmScript('cordis-config', 'verify-cordis-config', { label: 'Cordis config' }),
         pnpmScript('client-domain-graph', 'verify-client-domain-graph', { label: 'client domain graph' }),
         pnpmScript('test', 'test'),
-        pnpmScript('approval-policy', 'test:approval-policy', { label: 'Weighted approval policy' }),
-        pnpmScript('issue-management', 'test:issue-management', { label: 'Issue management policy' }),
         pnpmScript('duplication', 'duplication'),
         snapshotGate(),
         expectedOutputGate(),
@@ -385,75 +240,11 @@ export function gatesForMode(selected: Mode): Gate[] {
   }
 }
 
-function ciSharedStaticGates(): Gate[] {
-  return [
-    pnpmScript('runtime-closure', 'verify-runtime-closure', { label: 'runtime closure' }),
-    pnpmScript('default-product-isolation', 'verify-default-product-isolation', { label: 'default product isolation' }),
-    pnpmScript('product-use', 'verify-product-use', { label: 'product package classification' }),
-    pnpmScript('official-bundle-catalog', 'verify-official-bundle-catalog', { label: 'Official bundle catalog' }),
-    pnpmScript('provider-data', 'verify-provider-data', { label: 'pi-ai provider metadata' }),
-    pnpmScript('application-entrypoints', 'verify-application-entrypoints', { label: 'application entrypoints' }),
-    pnpmScript('constraints', 'constraints'),
-    pnpmScript('package-dependencies', 'verify-package-dependencies', { label: 'package dependencies' }),
-    pnpmScript('dsh-package-licenses', 'verify-dsh-package-licenses', { label: 'DSH package licenses' }),
-    pnpmScript('package-meta', 'verify-package-meta', { label: 'package metadata' }),
-    pnpmScript('cordis-config', 'verify-cordis-config', { label: 'Cordis config' }),
-    ...sharedHygieneGates(),
-    pnpmScript('approval-policy', 'test:approval-policy', { label: 'Weighted approval policy' }),
-    pnpmScript('issue-management', 'test:issue-management', { label: 'Issue management policy' }),
-  ]
-}
-
 function i18nGates(includeDictionaries: boolean): Gate[] {
   return [
     pnpmScript('installer-locales', 'verify-installer-locales', { label: 'Windows installer locales' }),
     pnpmScript('locale-metadata', 'verify-locale-metadata', { label: 'plugin locale metadata' }),
     ...includeDictionaries ? [pnpmExec('locale-dictionaries', ['vitest', 'run', 'scripts/locale-dictionary-parity.spec.ts', 'scripts/shipped-locales.spec.ts', 'packages/client/locale/tests/apply.client.spec.ts'], { label: 'locale dictionaries' })] : [],
-  ]
-}
-
-function sharedHygieneGates(): Gate[] {
-  return [
-    pnpmScript('optional-dependency-imports', 'verify-optional-dependency-imports', {
-      label: 'optional dependency imports',
-    }),
-    pnpmScript('client-packages', 'verify-client-packages', { label: 'client packages' }),
-    ...i18nGates(false),
-    pnpmScript('client-ui-i18n', 'verify-client-ui-i18n', { label: 'client UI i18n' }),
-    pnpmScript('client-route-resolution', 'verify-client-route-resolution', { label: 'client route resolution' }),
-    pnpmScript('no-bare-dispatcher', 'verify-no-bare-dispatcher', { label: 'proxy-aware dispatchers' }),
-    pnpmScript('plugin-record-callers', 'verify-plugin-record-callers', { label: 'plugin record callers' }),
-    pnpmScript('no-unknown-casts', 'verify-no-unknown-casts', { label: 'no new unknown casts' }),
-    pnpmScript('no-top-level-await', 'verify-no-top-level-await', { label: 'no module-scope await' }),
-    pnpmScript('plugin-entry-exports', 'verify-plugin-entry-exports', { label: 'plugin entry exports' }),
-  ]
-}
-
-function ciPrimaryGates(): Gate[] {
-  return [
-    ...ciSharedStaticGates(),
-    typertContractsGate(),
-    pnpmScript('typecheck', 'typecheck:contracts-ready', { needs: ['typert-contracts'] }),
-    lintGate({ needs: ['typert-contracts'] }),
-    pnpmScript('duplication', 'duplication'),
-    ...coverageGates(),
-    ...nodeCompatSmokeGates(),
-    snapshotGate(),
-    ...docSyncLeafGates({
-      docTypecheckNeeds: ['typert-contracts'],
-      docTypecheckScript: 'doc-typecheck:contracts-ready',
-    }),
-    pnpmScript('module-graph', 'verify-module-graph', { label: 'module graph' }),
-    // The prepared typecheck and build both drive Client tsc, while build also
-    // repeats the Host contract pass. Wait for all three consumers so build
-    // neither races tsbuildinfo nor replaces declarations while they are read.
-    ciBuildGate('build', { needs: ['typecheck', 'lint', 'doc-typecheck'] }),
-    pnpmScript('publint', 'publint', { needs: ['build'] }),
-    pnpmScript('node-next-types', 'verify-node-next-types', {
-      label: 'node-next types',
-      needs: ['build'],
-    }),
-    builtBinSmokeGate(),
   ]
 }
 
@@ -508,299 +299,21 @@ function nodeCompatSmokeGates(options: { cliSmoke?: boolean } = {}): Gate[] {
   return gates
 }
 
-function ciStaticGates(options: { ownsBuild: boolean }): Gate[] {
-  return [
-    ...ciSharedStaticGates(),
-    ...options.ownsBuild ? [ciBuildGate()] : [],
-    ...docSyncLeafGates({
-      includeDocTypecheck: options.ownsBuild,
-      ...options.ownsBuild
-        ? {
-          docTypecheckNeeds: ['build'],
-          docTypecheckEnv: { DSH_DOC_TYPECHECK_USE_BUILD_OUTPUT: '1' },
-          docTypecheckScript: 'doc-typecheck:contracts-ready',
-        }
-        : {},
-      docsBuildScript: 'docs:build:mpa',
-    }),
-    pnpmScript('module-graph', 'verify-module-graph', { label: 'module graph' }),
-  ]
-}
-
-function ciArtifactGates(): Gate[] {
-  return [
-    ciBuildGate(),
-    pnpmScript('publint', 'publint', { needs: ['build'] }),
-    pnpmScript('node-next-types', 'verify-node-next-types', {
-      label: 'node-next types',
-      needs: ['build'],
-    }),
-    builtBinSmokeGate(),
-  ]
-}
-
-function ciConsumerGates(): Gate[] {
-  const builtTree = ['build']
-  // The HMR web test starts `dev:web`, which rewrites the shared `lib/` and
-  // `apps/web/dist/` trees. Let every build-artifact reader settle before that
-  // writer starts; `after` preserves the web diagnostic even if a reader fails.
-  const buildArtifactReaders = [
-    'publint',
-    'snapshot',
-    'expected-output',
-    'doc-typecheck',
-    'node-next-types',
-    'built-bin-smoke',
-  ]
-  return [
-    ciArtifactBuildGate(),
-    pnpmScript('node-compat', 'check:node-compat', {
-      label: 'Node compatibility',
-      env: { [CLIENT_BUILD_PROFILE_SELECTOR]: 'official' },
-    }),
-    pnpmScript('publint', 'publint', { needs: builtTree }),
-    snapshotGate(builtTree),
-    expectedOutputGate(builtTree),
-    webSnapshotGate(builtTree, buildArtifactReaders),
-    pnpmScript('doc-typecheck', 'doc-typecheck:contracts-ready', {
-      needs: builtTree,
-      env: { DSH_DOC_TYPECHECK_USE_BUILD_OUTPUT: '1' },
-    }),
-    pnpmScript('node-next-types', 'verify-node-next-types', {
-      label: 'node-next types',
-      needs: builtTree,
-    }),
-    builtBinSmokeGate(builtTree),
-  ]
-}
-
-function webSnapshotGate(needs: string[], after?: string[]): Gate {
-  const order = after === undefined ? { needs } : { needs, after }
-  const workerRaw = process.env.DSH_WEB_SNAPSHOT_WORKERS
-  if (workerRaw !== undefined && workerRaw !== '') {
-    const workers = Number.parseInt(workerRaw, 10)
-    if (!Number.isSafeInteger(workers) || workers < 1 || String(workers) !== workerRaw) {
-      throw new Error(`run-gates: DSH_WEB_SNAPSHOT_WORKERS must be a positive integer, got ${JSON.stringify(workerRaw)}.`)
-    }
-    return pnpmScript('web-snapshot', 'test:web:ci', {
-      label: 'web browser snapshot',
-      displayCommand: `DSH_SNAPSHOT=replay DSH_WEB_SNAPSHOT_WORKERS=${workers} pnpm run test:web:ci`,
-      env: { DSH_SNAPSHOT: 'replay' },
-      ...order,
-      streamOutput: true,
-    })
-  }
-  return pnpmScript('web-snapshot', 'test:web:built', {
-    label: 'web browser snapshot',
-    displayCommand: 'DSH_SNAPSHOT=replay pnpm run test:web:built',
-    env: { DSH_SNAPSHOT: 'replay' },
-    ...order,
-  })
-}
-
-function ciWindowsBlockingGates(): Gate[] {
-  return [
-    ciBuildGate('windows-build', { label: 'build' }),
-    pnpmScript('windows-site', 'docs:build', { label: 'production site' }),
-  ]
-}
-
-function ciWindowsCompleteGates(): Gate[] {
-  const coverage = coverageGates('win32').map(gate => gate.id === 'electron-install' ? gate : {
-    ...gate,
-    needs: [...new Set(['build', ...(gate.needs ?? [])])],
-  })
-  const coverageAfter = coverage.map(gate => gate.id)
-  const observational = ciWindowsObservationalGates()
-    // Coverage owns Electron preparation. The required production site replaces
-    // the MPA build, which writes to the same output directory.
-    .filter(gate => gate.id !== 'build' && gate.id !== 'docs-site-build' && gate.id !== 'electron-install')
-    .map(gate => ({
-      ...gate,
-      allowFailure: true,
-      after: [...new Set([
-        ...coverageAfter,
-        ...(gate.after ?? []).map(id => id === 'docs-site-build' ? 'windows-site' : id),
-      ])],
-    }))
-  return [
-    ciBuildGate(),
-    pnpmScript('windows-site', 'docs:build', { label: 'production site' }),
-    ...coverage,
-    ...observational,
-  ]
-}
-
-// Native Electron fixtures need the locked binary before Vitest removes ambient proxies.
-//
-// The installer fetches the 100 MB Electron release archive through the runner
-// proxy, and one gateway timeout there fails the required Windows coverage lane
-// before any test runs. On 2026-11-09 four jobs on three branches stopped at
-// `504 (Gateway Time-out)` for that URL after ~12 s, while other jobs fetched
-// the same archive minutes later (2.5 s from a warm cache, 14.7 s cold), so the
-// fetch gets three attempts instead of one. The wait outlasts the observed
-// gateway timeout, after which a fresh connection can reach the archive.
-function electronInstallGate(): Gate {
-  return {
-    id: 'electron-install',
-    label: 'Electron binary',
-    displayCommand: 'pnpm --filter @deepseek-ai/dsh-desktop exec install-electron',
-    ...pnpmInvocation(['--filter', '@deepseek-ai/dsh-desktop', 'exec', 'install-electron']),
-    env: { ELECTRON_GET_USE_PROXY: '1' },
-    retries: 2,
-    retryDelayMs: 15000,
-  }
-}
-
-function ciWindowsObservationalGates(): Gate[] {
-  const predecessors = [
-    ...ciStaticGates({ ownsBuild: true }),
-    electronInstallGate(),
-    // Linux owns required lint and snapshots; Windows omits those duplicates.
-    pnpmScript('duplication', 'duplication'),
-    pnpmScript('publint', 'publint', { needs: ['build'] }),
-    pnpmScript('node-next-types', 'verify-node-next-types', {
-      label: 'node-next types',
-      needs: ['build'],
-    }),
-  ]
-  return [
-    ...predecessors,
-    {
-      ...builtBinSmokeGate(['build', 'electron-install']),
-      // This smoke starts real application children with bounded startup
-      // deadlines. Let other Windows processes settle before measuring startup.
-      after: predecessors.map(gate => gate.id),
-    },
-  ]
-}
-
-// Host package compilation and the bundle-free Typert pass produce the
-// declarations that prepared typecheck, lint, and doc-typecheck read; none of
-// them reads a bundle or the Host aggregate program's noEmit check, which
-// `build` owns.
-function typertContractsGate(): Gate {
-  return pnpmExec('typert-contracts', ['tsx', 'scripts/compile-referenced-projects.ts', 'host-contracts'], {
-    label: 'Typert contracts',
-  })
-}
-
-function lintGate(options: { needs?: string[] } = {}): Gate {
-  const raw = process.env.DSH_OXLINT_THREADS
-  const script = 'lint:contracts-ready'
-  return pnpmScript('lint', script, {
-    ...raw === undefined || raw === ''
-      ? {}
-      : { displayCommand: `DSH_OXLINT_THREADS=${raw} pnpm run ${script}` },
-    ...options.needs === undefined ? {} : { needs: options.needs },
-  })
-}
-
-// The heavy suites run uninstrumented beside the thresholded gate: their
-// compiler- and subprocess-bound fixtures pay a multiple of their runtime
-// under v8 instrumentation while contributing nothing the thresholds need
-// (membership rules in scripts/coverage-exempt.ts).
-//
-// DSH_COVERAGE_MAX_WORKERS is shared between the two parallel gates. CI
-// defaults its partition count to the instrumented share; an explicit
-// DSH_COVERAGE_PARTITIONS overrides that share independently. The exempt
-// gate's wall clock is dominated by its longest single file, so it takes the
-// small share. A budget of 1 gives each gate 1 worker; lanes that need a strict
-// total of one (the serial reference jobs) also set DSH_GATE_CONCURRENCY=1,
-// which keeps the gates from overlapping at all.
-// DSH_COVERAGE_TEST_TIMEOUT_MS is not a gate argument: vitest.config.ts reads
-// it from the environment every gate inherits (coverageTestTimeoutOptions).
-function coverageWorkerArgs(): { instrumented: string[]; exempt: string[] } {
-  const [flag] = positiveIntArg('DSH_COVERAGE_MAX_WORKERS', '--maxWorkers')
-  if (flag === undefined) return { instrumented: [], exempt: [] }
-  const total = Number.parseInt(flag.split('=')[1] ?? '', 10)
-  const exempt = Math.max(1, Math.floor(total / 3))
-  const instrumented = Math.max(1, total - exempt)
-  return {
-    instrumented: [`--maxWorkers=${String(instrumented)}`],
-    exempt: [`--maxWorkers=${String(exempt)}`],
-  }
-}
-
-function coverageGates(platform: NodeJS.Platform = process.platform): Gate[] {
-  const electron = platform === 'win32' ? [electronInstallGate()] : []
-  const workers = coverageWorkerArgs()
-  const partitions = parseCoveragePartitionCount(process.env[COVERAGE_PARTITIONS_ENV])
-  const instrumented = partitions === undefined
-    ? pnpmExec('coverage', [
-      'vitest',
-      'run',
-      '--coverage',
-      ...workers.instrumented,
-    ], {
-      label: 'test:coverage',
-      env: { [COVERAGE_EXEMPT_ENV]: '1' },
-    })
-    : pnpmScript('coverage', 'test:coverage:partitioned', {
-      label: 'test:coverage',
-      displayCommand: `${COVERAGE_PARTITIONS_ENV}=${partitions} pnpm run test:coverage:partitioned`,
-      env: { [COVERAGE_EXEMPT_ENV]: '1' },
-      streamOutput: true,
-    })
-  return [
-    pnpmScript('native-system', 'build:native-system'),
-    ...electron,
-    { ...instrumented, needs: ['native-system', ...electron.map(gate => gate.id)] },
-    pnpmExec('coverage-exempt-heavy', [
-      'vitest',
-      'run',
-      ...coverageExemptHeavySuites.map(suite => suite.filter),
-      ...workers.exempt,
-    ], {
-      label: 'test:coverage-exempt-heavy',
-      needs: ['native-system'],
-    }),
-  ]
-}
-
-// The uninstrumented unit inventory for a whole-inventory reference lane
-// (the Sandbox workflow's darwin parity job). It is `pnpm run test`; the lane
-// sets DSH_COVERAGE_TEST_TIMEOUT_MS, which vitest.config.ts reads from the
-// inherited environment, because a shared hosted runner delays cases that
-// inherit Vitest's defaults past them. Output streams so the job log keeps
-// per-file timestamps for a 15–30 minute run.
-function ciUnitGates(): Gate[] {
-  return [
-    pnpmScript('native-system', 'build:native-system'),
-    pnpmExec('unit', ['vitest', 'run'], {
-      label: 'test',
-      needs: ['native-system'],
-      streamOutput: true,
-    }),
-  ]
-}
-
-// Recorded-session adapters boot process scenarios in `lib` mode. Callers wait
-// either on `build` or on a validation gate that transitively owns that build.
-function snapshotGate(needs: string[] = ['build']): Gate {
+// Recorded-session adapters boot process scenarios in `lib` mode after `build`.
+function snapshotGate(): Gate {
   return pnpmScript('snapshot', 'test:snapshot', {
     env: { DSH_EXAMPLE_MODE: 'lib' },
-    needs,
+    needs: ['build'],
   })
 }
 
 // Owner-local process expectations consume built package exports without entering
 // the recorded-session corpus or the credentialed provider lane.
-function expectedOutputGate(needs: string[] = ['build']): Gate {
+function expectedOutputGate(): Gate {
   return pnpmScript('expected-output', 'test:expected', {
     env: { DSH_EXAMPLE_MODE: 'lib' },
-    needs,
+    needs: ['build'],
   })
-}
-
-function positiveIntArg(envName: string, flag: string): string[] {
-  const raw = process.env[envName]
-  if (raw === undefined || raw === '') return []
-  const parsed = Number.parseInt(raw, 10)
-  if (!Number.isSafeInteger(parsed) || parsed < 1 || String(parsed) !== raw) {
-    throw new Error(`run-gates: ${envName} must be a positive integer, got ${JSON.stringify(raw)}.`)
-  }
-  return [`${flag}=${raw}`]
 }
 
 function flagEnabled(envName: string): boolean {
@@ -816,6 +329,7 @@ function hygieneLeafGates(options: { artifactNeeds?: string[] } = {}): Gate[] {
     pnpmScript('rescope-vendor', 'rescope-vendor:check', { label: 'vendor rescope' }),
     pnpmScript('publint', 'publint', artifactOptions),
     pnpmScript('constraints', 'constraints'),
+    pnpmScript('expected-filenames', 'verify-expected-filenames', { label: 'expected filenames' }),
     pnpmScript('default-product-isolation', 'verify-default-product-isolation', { label: 'default product isolation' }),
     pnpmScript('product-use', 'verify-product-use', { label: 'product package classification' }),
     pnpmScript('official-bundle-catalog', 'verify-official-bundle-catalog', { label: 'Official bundle catalog' }),
@@ -823,11 +337,23 @@ function hygieneLeafGates(options: { artifactNeeds?: string[] } = {}): Gate[] {
     pnpmScript('package-dependencies', 'verify-package-dependencies', { label: 'package dependencies' }),
     pnpmScript('application-entrypoints', 'verify-application-entrypoints', { label: 'application entrypoints' }),
     pnpmScript('dsh-package-licenses', 'verify-dsh-package-licenses', { label: 'DSH package licenses' }),
+    pnpmScript('package-meta', 'verify-package-meta', { label: 'package metadata' }),
     pnpmScript('node-next-types', 'verify-node-next-types', {
       label: 'node-next types',
       ...artifactOptions,
     }),
-    ...sharedHygieneGates(),
+    pnpmScript('optional-dependency-imports', 'verify-optional-dependency-imports', {
+      label: 'optional dependency imports',
+    }),
+    pnpmScript('client-packages', 'verify-client-packages', { label: 'client packages' }),
+    ...i18nGates(false),
+    pnpmScript('client-ui-i18n', 'verify-client-ui-i18n', { label: 'client UI i18n' }),
+    pnpmScript('client-route-resolution', 'verify-client-route-resolution', { label: 'client route resolution' }),
+    pnpmScript('no-bare-dispatcher', 'verify-no-bare-dispatcher', { label: 'proxy-aware dispatchers' }),
+    pnpmScript('plugin-record-callers', 'verify-plugin-record-callers', { label: 'plugin record callers' }),
+    pnpmScript('no-unknown-casts', 'verify-no-unknown-casts', { label: 'no new unknown casts' }),
+    pnpmScript('no-top-level-await', 'verify-no-top-level-await', { label: 'no module-scope await' }),
+    pnpmScript('plugin-entry-exports', 'verify-plugin-entry-exports', { label: 'plugin entry exports' }),
   ]
 }
 
@@ -836,7 +362,6 @@ function docSyncLeafGates(options: {
   docTypecheckNeeds?: string[]
   docTypecheckEnv?: Record<string, string | undefined>
   docTypecheckScript?: 'doc-typecheck' | 'doc-typecheck:contracts-ready'
-  docsBuildScript?: 'docs:build' | 'docs:build:mpa'
 } = {}): Gate[] {
   const docTypecheckOptions: Partial<Gate> = {}
   if (options.docTypecheckNeeds !== undefined) docTypecheckOptions.needs = options.docTypecheckNeeds
@@ -846,7 +371,7 @@ function docSyncLeafGates(options: {
     ...options.includeDocTypecheck === false
       ? []
       : [pnpmScript('doc-typecheck', options.docTypecheckScript ?? 'doc-typecheck', docTypecheckOptions)],
-    pnpmScript('docs-site-build', options.docsBuildScript ?? 'docs:build', { label: 'documentation build' }),
+    pnpmScript('docs-site-build', 'docs:build', { label: 'documentation build' }),
     pnpmScript('doc-graphs', 'verify-doc-graphs', { label: 'doc graphs' }),
     pnpmScript('cli-help', 'verify-cli-help', {
       label: 'CLI help reference',
@@ -916,39 +441,6 @@ function docQuickLeafGates(): Gate[] {
   return docSyncLeafGates({ includeDocTypecheck: false }).filter(gate => gate.quick === true)
 }
 
-function builtBinSmokeGate(needs: string[] = ['build']): Gate {
-  return pnpmExec('built-bin-smoke', [
-    'vitest',
-    'run',
-    '--config',
-    'vitest.e2e.config.ts',
-    'apps/cli/tests/profiles/headless/tests/keyless-smoke.e2e.ts',
-    'apps/cli/tests/profiles/headless/tests/source-tool.built.e2e.ts',
-    'apps/cli/tests/built-bin.e2e.ts',
-    'apps/desktop/tests/acl-skill.built.e2e.ts',
-    'apps/desktop/tests/installed-docs-asar.built.e2e.ts',
-    'packages/host/directory-picker-native/tests/built-worker.e2e.ts',
-    'packages/sdk/server/tests/built-scope-carrier.e2e.ts',
-    'packages/deliverables/tool-present/tests/built-errors.e2e.ts',
-    'packages/subprocess/subprocess-local/tests/spawn-runner-built.e2e.ts',
-    'packages/subagent/subagent-codex/tests/loader-composition.e2e.ts',
-    'packages/subagent/subagent-claude-code/tests/loader-composition.e2e.ts',
-    'packages/api/remotes/tests/built-lib.e2e.ts',
-    'packages/team/agent-team/tests/built-lib.e2e.ts',
-    // Built execution consumers: the only automated proof that package-name
-    // imports reach their lib/ entrypoints under plain Node. The e2e lane runs
-    // unbuilt, so these files self-skip there.
-    'packages/workflow/workflow-ptc/tests/built-runtime.e2e.ts',
-    'packages/ptc-runtime/ptc-runtime-node/tests/built-lib.e2e.ts',
-    'packages/session/session-persistence-jsonl/tests/built-migration-worker.e2e.ts',
-    'packages/lsp/lsp-stdio/tests/built-lib.e2e.ts',
-  ], {
-    label: 'built-bin smoke',
-    needs,
-    env: { DSH_EXAMPLE_MODE: 'lib' },
-  })
-}
-
 /**
  * Reject a gate list whose graph cannot be executed unambiguously.
  * @param gates - complete aggregate to validate.
@@ -965,11 +457,6 @@ function validateGateGraph(gates: readonly Gate[]): void {
     for (const dependency of gate.needs ?? []) {
       if (!ids.has(dependency)) {
         throw new Error(`run-gates: gate ${JSON.stringify(gate.id)} depends on unknown gate ${JSON.stringify(dependency)}.`)
-      }
-    }
-    for (const predecessor of gate.after ?? []) {
-      if (!ids.has(predecessor)) {
-        throw new Error(`run-gates: gate ${JSON.stringify(gate.id)} waits for unknown gate ${JSON.stringify(predecessor)}.`)
       }
     }
   }
@@ -993,7 +480,7 @@ function findDependencyCycle(gates: readonly Gate[]): string[] | undefined {
 
     active.set(id, path.length)
     path.push(id)
-    for (const predecessor of [...(gate.needs ?? []), ...(gate.after ?? [])]) {
+    for (const predecessor of gate.needs ?? []) {
       const cycle = visit(predecessor)
       if (cycle !== undefined) return cycle
     }
@@ -1014,10 +501,10 @@ function findDependencyCycle(gates: readonly Gate[]): string[] | undefined {
  * Scheduling options for one aggregate.
  */
 export interface RunGatesOptions {
-  /** Stop the aggregate at the first blocking gate failure. */
+  /** Stop the aggregate at the first gate failure. */
   failFast?: boolean
   /** Forward host SIGINT/SIGTERM to the abort path so detached gate trees are
-   * terminated when the run itself is interrupted or the runner cancels it.
+   * terminated when the run itself is interrupted or terminated.
    * Tree termination additionally requires failFast, because only then is the
    * abort signal passed to the executor and children detached. */
   forwardProcessSignals?: boolean
@@ -1032,7 +519,7 @@ export interface RunGatesOptions {
  * process group.
  * @param observe - result observer invoked when each gate settles.
  * @param options - scheduling options; fail-fast aborts the aggregate at the
- * first blocking gate failure by killing running children and skipping every
+ * first gate failure by killing running children and skipping every
  * not-yet-run gate.
  * @returns results in aggregate order.
  */
@@ -1055,7 +542,7 @@ export async function runGates(
   const running: RunningGate[] = []
   const abort = new AbortController()
   let abortCause: string | undefined
-  // Host interruption (terminal Ctrl+C, runner cancellation) drains through
+  // Host interruption (terminal Ctrl+C, SIGTERM) drains through
   // the same abort path as a gate failure, so detached trees are killed and
   // never orphaned. Handlers are removed before returning.
   const hostSignals = options.forwardProcessSignals === true ? ['SIGINT', 'SIGTERM'] as const : []
@@ -1123,8 +610,7 @@ export async function runGates(
         states.set(settled.item.gate.id, observed.status)
         results.set(settled.item.gate.id, observed)
         observe(observed)
-        if (abortCause === undefined && options.failFast === true
-          && observed.status === 'failed' && settled.item.gate.allowFailure !== true) {
+        if (abortCause === undefined && options.failFast === true && observed.status === 'failed') {
           abortCause = `${observed.gate.label} failed`
           abort.abort()
           console.error(`run-gates: fail-fast aborting: ${abortCause}.`)
@@ -1176,11 +662,6 @@ function skippedByFailFast(gate: Gate, cause: string): GateResult {
 
 function predecessorsReady(gate: Gate, states: Map<string, GateState>): boolean {
   return (gate.needs ?? []).every(id => states.get(id) === 'passed')
-    && (gate.after ?? []).every(id => gateSettled(states.get(id)))
-}
-
-function gateSettled(state: GateState | undefined): boolean {
-  return state === 'passed' || state === 'failed' || state === 'skipped'
 }
 
 function gateFailed(state: GateState | undefined): boolean {
@@ -1215,12 +696,10 @@ export async function runGate(gate: Gate, signal?: AbortSignal): Promise<GateRes
     child.stdout.setEncoding('utf8')
     child.stderr.setEncoding('utf8')
     child.stdout.on('data', (chunk: string) => {
-      if (gate.streamOutput === true) process.stdout.write(chunk)
-      else output.push({ stream: 'stdout', text: chunk })
+      output.push({ stream: 'stdout', text: chunk })
     })
     child.stderr.on('data', (chunk: string) => {
-      if (gate.streamOutput === true) process.stderr.write(chunk)
-      else output.push({ stream: 'stderr', text: chunk })
+      output.push({ stream: 'stderr', text: chunk })
     })
     // Deliver one signal to the entire gate tree: the negative pid targets the
     // POSIX process group the detached child leads; Windows has no groups, so
@@ -1246,8 +725,7 @@ export async function runGate(gate: Gate, signal?: AbortSignal): Promise<GateRes
         child.kill(signalToSend)
       }
       // The captured list stays valid after the group kill reparents the
-      // detached descendants of a nested run-gates (the `check:node-compat`
-      // and `check:ci:lint:contracts-ready` gates in ci-consumers): pids do
+      // detached descendants of a nested run-gates: pids do
       // not change on reparenting, so the escalation reaches leaves that
       // ignored SIGTERM without re-enumerating.
       for (const descendantPid of descendants) {
@@ -1421,36 +899,6 @@ export async function runGate(gate: Gate, signal?: AbortSignal): Promise<GateRes
   result.aborted = aborted
   if (spawnError !== undefined) result.error = spawnError
   return result
-}
-
-/**
- * Execute one gate, repeating a failure while the gate declares `retries`.
- * The wait between attempts is `retryDelayMs`, so a gate that fetches a remote
- * artifact gets several connections to that host instead of failing the
- * aggregate on the first one. A result the fail-fast signal terminated is not
- * retried: the aggregate already decided to abort, and another attempt would be
- * terminated again. The returned duration covers every attempt, and the output
- * and error are the last attempt's, which is the one whose failure ends the gate.
- * @param gate - command and scheduler environment to execute.
- * @param signal - abort signal forwarded to every attempt.
- * @param execute - executor for one attempt; the child-process boundary by default.
- * @returns the last attempt's outcome with the total duration.
- */
-export async function runGateWithRetry(
-  gate: Gate,
-  signal?: AbortSignal,
-  execute: GateExecutor = runGate,
-): Promise<GateResult> {
-  const started = performance.now()
-  const attempts = 1 + Math.max(0, gate.retries ?? 0)
-  let result = await execute(gate, signal)
-  for (let attempt = 2; attempt <= attempts && result.status === 'failed' && signal?.aborted !== true; attempt++) {
-    const delayMs = Math.max(0, gate.retryDelayMs ?? 0)
-    console.log(`run-gates: retrying ${gate.label} (attempt ${String(attempt)} of ${String(attempts)}) in ${String(delayMs)} ms`)
-    await new Promise(resolve => setTimeout(resolve, delayMs))
-    result = await execute(gate, signal)
-  }
-  return { ...result, durationMs: performance.now() - started }
 }
 
 /**
@@ -1731,7 +1179,7 @@ function printResult(result: GateResult): void {
     console.error(`command: ${result.gate.displayCommand}`)
     console.error(`outcome: ${formatGateResultReason(result)}`)
   }
-  if (result.gate.streamOutput !== true) printOutput(result.output)
+  printOutput(result.output)
 }
 
 function printSummary(results: GateResult[], durationMs: number): void {
@@ -1748,8 +1196,7 @@ function printSummary(results: GateResult[], durationMs: number): void {
   for (const result of unsuccessful) {
     const duration = (result.durationMs / 1000).toFixed(2)
     const reason = formatGateResultReason(result)
-    const disposition = result.gate.allowFailure === true ? 'NON-BLOCKING ' : ''
-    console.error(`  - ${disposition}${result.status.toUpperCase()} ${result.gate.label} (${duration}s, ${reason})`)
+    console.error(`  - ${result.status.toUpperCase()} ${result.gate.label} (${duration}s, ${reason})`)
     console.error(`    ${result.gate.displayCommand}`)
   }
 }

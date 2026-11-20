@@ -75,6 +75,7 @@ const IDLE_INSTALL: InstallState = {
 }
 
 const READY: PluginManagerState = {
+  management: 'full',
   status: 'ready',
   refreshStatus: 'idle',
   packages: [],
@@ -228,8 +229,8 @@ function renderTab(
 }
 
 describe('PluginManagerPage', () => {
-  it('shows no tabs without contributions, and switches between Installed and a contributed tab', () => {
-    const { actions, navigation, setTabs } = renderTab({ packages: [pkg()] }, {}, {
+  it('keeps contributed tabs separate from bundle management, including fixed profiles', () => {
+    const { actions, navigation, setTabs, set } = renderTab({ packages: [pkg()] }, {}, {
       'plugins.tab:discover': (_view, owner) => {
         const tab = owner as PluginTabProps
         return (
@@ -242,6 +243,7 @@ describe('PluginManagerPage', () => {
       },
     })
     expect(screen.queryByRole('tablist')).toBeNull()
+    expect(screen.getByRole('button', { name: en.addPlugin })).toBeTruthy()
     setTabs([{ id: 'discover', label: 'Discover' }])
     expect(screen.getByRole('tab', { name: en.installedTab }).getAttribute('aria-selected')).toBe('true')
     // The tabs stay in the pinned page head with the title; the tab panel scrolls in the page body.
@@ -272,6 +274,12 @@ describe('PluginManagerPage', () => {
     expect(navigation.getSnapshot().tab).toBe('installed')
     // A contributed tab that returns can be selected again.
     setTabs([{ id: 'discover', label: 'Discover' }])
+    fireEvent.click(screen.getByRole('tab', { name: 'Discover' }))
+    expect(screen.getByRole('tabpanel', { name: 'Discover' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('tab', { name: en.installedTab }))
+    set({ management: 'fixed', packages: [] })
+    expect(screen.queryByRole('button', { name: en.addPlugin })).toBeNull()
+    expect(screen.queryByRole('button', { name: en.infoLabel })).toBeNull()
     fireEvent.click(screen.getByRole('tab', { name: 'Discover' }))
     expect(screen.getByRole('tabpanel', { name: 'Discover' })).toBeTruthy()
   })

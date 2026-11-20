@@ -1,0 +1,40 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/operation-evidence/README.md
+/:
+  en: ba48695cea9fa700
+  zh: bc95768537916dce
+/deepseek-ai-dsh-operation-evidence:
+  en: 3f2e7a01accd4bed
+  zh: 4fef6e7f7b0f3acf
+/deepseek-ai-dsh-operation-evidence/summary:
+  en: 95650f7f951c283d
+  zh: b77bb4306e5fdd28
+/deepseek-ai-dsh-operation-evidence/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: dffaa4786f6c7978
+/deepseek-ai-dsh-operation-evidence/use-this-package:
+  en: 3687fa9d832d920a
+  zh: 9e5c6fb83bcdfed9
+/deepseek-ai-dsh-operation-evidence/use-this-package/minimal-configuration:
+  en: 30f18dfa5c76e690
+  zh: 792d88a603d7a63b
+/deepseek-ai-dsh-operation-evidence/understand-the-implementation:
+  en: 63568a5c09a2ad6f
+  zh: 409c3c3e3d7e8ba6
+/deepseek-ai-dsh-operation-evidence/further-exploration:
+  en: 34e2b4baebfa2bd8
+  zh: 99bd892a5ebb4d5a
+/deepseek-ai-dsh-operation-evidence/model-experience:
+  en: 75b1f3e11381c2cd
+  zh: 6c7d4b6cd9e91b19
+/deepseek-ai-dsh-operation-evidence/model-experience/kv-cache-effect:
+  en: d245041ced315b71
+  zh: 7c093a897518ba96
+/deepseek-ai-dsh-operation-evidence/known-limitations-and-deferred-work:
+  en: faef57c815b787f3
+  zh: 8d0f22da29bd0300
+/deepseek-ai-dsh-operation-evidence/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: a4a4e16659fe3449

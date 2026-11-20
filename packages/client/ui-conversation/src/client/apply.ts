@@ -50,6 +50,7 @@ import { TRAJECTORY_VIEW_ID, resolveActiveView } from './view-selection.ts'
 import { createViewPins } from './view-pins.ts'
 import { en, ja, es, fr, de, ru, pt, NS, zh, type ConversationKey } from './locales.ts'
 import { CONVERSATION_SETTINGS_NAMESPACE, type ConversationSettings } from '../submission-settings.ts'
+import { ConversationAppearanceSchema, type ConversationAppearance } from '../appearance.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -119,7 +120,7 @@ interface WorkspaceNavigation {
   openWorkspace(
     workspaceId: Parameters<ConversationInjected['selectWorkspace']>[0],
     beforeOpen: (sessionId: SessionId) => void,
-  ): Promise<void>
+  ): ReturnType<ConversationInjected['selectWorkspace']>
 }
 
 /** Action registration used by the composer without importing its command-UI consumer. */
@@ -189,6 +190,12 @@ export function apply(ctx: Context, config: Config = Config({})): void {
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-conversation: dictionaries')
   const t = ctx.locale.bind(NS)
+  const appearanceForm = ctx.configForms.get<ConversationAppearance>(CONVERSATION_SETTINGS_NAMESPACE)
+  const defaultAppearance = ConversationAppearanceSchema({})
+  const appearance = {
+    getSnapshot: () => appearanceForm.getSnapshot().value ?? defaultAppearance,
+    subscribe: (listener: () => void) => appearanceForm.subscribe(listener),
+  }
   const conversationStore = createConversationStore()
   const submissionPolicy = new ComposerSubmissionPolicy(
     ctx.configForms.get<ConversationSettings>(CONVERSATION_SETTINGS_NAMESPACE),
@@ -350,6 +357,7 @@ export function apply(ctx: Context, config: Config = Config({})): void {
       'conversation.composer': { kind: 'chain', scope: 'session' },
       'conversation.composer.bar': { kind: 'single', scope: 'session-maybe' },
       'conversation.input.dock': { kind: 'list', scope: 'session' },
+      'conversation.input.status': { kind: 'list', scope: 'session' },
       'conversation.hero.frame': { kind: 'hoc', scope: 'root' },
       'conversation.hero.brand.mark': { kind: 'single', scope: 'root' },
       'conversation.hero.workspace': { kind: 'single', scope: 'root' },
@@ -362,6 +370,7 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     },
     inject: (sessionId: SessionId | undefined): ConversationInjected => ({
       hooks: {
+        appearance,
         composerBlock: sessionId === undefined ? ABSENT_BLOCK : composerBlocks.storeFor(sessionId),
       },
       selectWorkspace: workspaceId => workspaceNavigation.openWorkspace(workspaceId, (nextId) => {
@@ -502,9 +511,12 @@ export function apply(ctx: Context, config: Config = Config({})): void {
       const shell = inputHub.shell(sessionId)
       const inputTriggers = inputHub.inputTriggers(sessionId)
       const bridge = hostPathBridge()
+      const ordinarySession = () => sessions.binding(sessionId)?.session.getSnapshot().subagent === null
+      const usesVerbatimAttachments = () => ordinarySession() && uiConversation.usesVerbatimAttachments(sessionId)
       return {
         registerFileIntake: fileIntake,
         keyboard: shell,
+        usesVerbatimAttachments,
         addFiles: (files, directories = new Set()) => {
           if (sessions.binding(sessionId) === undefined) return t('file.sessionUnavailable')
           const { phase } = shell.snapshot
@@ -514,12 +526,13 @@ export function apply(ctx: Context, config: Config = Config({})): void {
           const uploads: File[] = []
           const references: ReferenceInsert[] = []
           const cwd = sessions.list.getSnapshot().byId[sessionId]?.cwd
+          const verbatim = usesVerbatimAttachments()
           for (const file of files) {
             const directory = directories.has(file)
             if (bridge === undefined && directory) return t('attachment.directoryDesktopOnly')
             const path = bridge?.pathFor(file) ?? ''
             if (directory && path === '') return t('attachment.pathUnavailable')
-            if (path === '' || (!directory && isImageMediaType(file.type))) {
+            if (path === '' || (!directory && (verbatim || isImageMediaType(file.type)))) {
               uploads.push(file)
               continue
             }
@@ -535,8 +548,7 @@ export function apply(ctx: Context, config: Config = Config({})): void {
           }
           try {
             // The Host stages uploads for ordinary Sessions only; a subagent continuation's images travel inline.
-            const ordinary = sessions.binding(sessionId)?.session.getSnapshot().subagent === null
-            const drafts = conversation.createDrafts(sessionId, uploads, ordinary)
+            const drafts = conversation.createDrafts(sessionId, uploads, ordinarySession())
             if (!shell.addFiles(references, drafts.map(draft => draft.id))) {
               conversation.releaseDraftAttachments(drafts)
               return t('attachment.dropBlocked')

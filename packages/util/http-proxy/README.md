@@ -42,6 +42,8 @@ Plain `fetch()` is proxied, and so is any SDK that reaches `globalThis.fetch` â€
 
 `proxyRouteFor` answers with the transport that answer assumed, not just the answer: its proxied arm carries the dispatcher already routing by this policy. A caller that read the policy and then built its own transport could have an unmount land between the two and send the request somewhere its branch never cleared.
 
+For destination-specific trust, pass `ca` to `createRouteDispatcher` and use that dispatcher only for that destination. The CA configures destination TLS, including through a proxy; it does not change proxy TLS trust. Destination certificate verification stays enabled. Close the dispatcher after its requests finish.
+
 Constructing `new Agent(...)` and passing it as `dispatcher` overrides the global one and silently bypasses the proxy. `verify-no-bare-dispatcher` rejects that outside this package. A call site that legitimately owns its transport, because it carries per-request state a process-wide dispatcher cannot hold, says so with a `proxy-exempt:` comment on the line.
 
 That gate cannot see inside an SDK, so each outbound call site carries an `egress.spec.ts` that drives its actual transport through a fake proxy and checks the observed route. Every new outbound call site must include that transport test. Telemetry asserts its direct-route exception. These tests detect dependency changes that alter routing without changing the call site.

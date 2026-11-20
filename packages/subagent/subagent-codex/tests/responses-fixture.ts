@@ -14,21 +14,20 @@ interface RecordedResponsesRequest {
   readonly body: Record<string, unknown>
 }
 
+interface FixtureFunctionCall {
+  readonly name: string
+  readonly arguments: Record<string, unknown>
+  readonly namespace?: string
+}
+
 /** Behavior consumed by one Responses request. */
 export type ResponsesBehavior =
   | { readonly kind: 'complete'; readonly text: string }
   | { readonly kind: 'error'; readonly status: number; readonly message: string }
-  | {
-    readonly kind: 'functionCall'
-    readonly name: string
-    readonly arguments: Record<string, unknown>
-  }
+  | ({ readonly kind: 'functionCall' } & FixtureFunctionCall)
   | {
     readonly kind: 'advertisedFunctionCall'
-    readonly choices: readonly {
-      readonly name: string
-      readonly arguments: Record<string, unknown>
-    }[]
+    readonly choices: readonly FixtureFunctionCall[]
   }
   | { readonly kind: 'hold' }
 
@@ -152,15 +151,15 @@ export function completeResponsesEvents(text: string): Record<string, unknown>[]
 }
 
 function functionCallEvents(
-  name: string,
-  argumentsValue: Record<string, unknown>,
+  call: FixtureFunctionCall,
 ): Record<string, unknown>[] {
-  const argumentsText = JSON.stringify(argumentsValue)
+  const argumentsText = JSON.stringify(call.arguments)
   const item = {
     id: 'fc_fixture',
     type: 'function_call',
     status: 'completed',
-    name,
+    name: call.name,
+    ...call.namespace === undefined ? {} : { namespace: call.namespace },
     arguments: argumentsText,
     call_id: 'call_fixture',
   }
@@ -295,7 +294,7 @@ export async function startResponsesFixture(
         const call = behavior.kind === 'functionCall'
           ? behavior
           : advertisedCall!
-        events = functionCallEvents(call.name, call.arguments)
+        events = functionCallEvents(call)
       }
       for (const event of events) {
         response.write(`data: ${JSON.stringify(event)}\n\n`)

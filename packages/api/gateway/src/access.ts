@@ -1,5 +1,5 @@
 /**
- * Resource resolution for non-owner access decisions: the resources one call
+ * Resource resolution for access decisions: the resources one call
  * or one forwarded event touches, read from Typert-validated arguments before
  * any lookup or Context resolves them.
  * @module @deepseek-ai/dsh-api-gateway/src/access

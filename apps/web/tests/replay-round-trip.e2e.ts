@@ -23,6 +23,7 @@ import { ToolCallId, expandAssistantStream } from '@deepseek-ai/dsh-llm'
 import { SessionId, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type { SessionListValue } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import { readClientBuildRecord } from '../../../scripts/client-build-environment.ts'
 import {
   acknowledgeReloadConnectionLoss, assertFixtureInventory, captureExpandedTurnProcessAria, captureStableAria,
   compareOrRefreshGolden, fixtureUserPrompts,
@@ -105,6 +106,19 @@ describe('web e2e: fresh round trip through the real assembly', () => {
     await page.getByRole('button', { name: 'Standard mode', exact: true }).waitFor({ timeout: 15_000 })
     await page.getByRole('button', { name: 'Select model, current DeepSeek-V4-Flash' }).waitFor({ timeout: 15_000 })
     await expect.poll(() => page.evaluate(() => localStorage.getItem('dsh.sessions.current'))).toBe(beforeReload)
+    const build = readClientBuildRecord(REPO_ROOT).environment
+    if (build.DSH_CLIENT_BUILD_PROFILE === undefined) {
+      expect(await page.title()).toBe(build.DSH_CLIENT_TITLE ?? 'Vardock')
+      const brandImages = page.locator('image[href*="vardock-"]')
+      expect(await brandImages.count()).toBe(3)
+      const decoded = await brandImages.evaluateAll(async images => Promise.all(images.map(async (element) => {
+        const image = new Image()
+        image.src = element.getAttribute('href')!
+        await image.decode()
+        return [image.naturalWidth, image.naturalHeight]
+      })))
+      expect(decoded).toEqual([[1254, 1254], [1280, 720], [1254, 1254]])
+    }
     if (MODE !== 'record') {
       await compareOrRefreshGolden(BLANK_EXPECTED,
         await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd), MODE)

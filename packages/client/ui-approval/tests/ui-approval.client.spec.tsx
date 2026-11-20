@@ -22,6 +22,7 @@ type ApprovalListener = (
     callId?: string
     reason?: string
     displayReason?: PendingApproval['displayReason']
+    detail?: string
     signal?: AbortSignal
   },
   next: () => Promise<'unavailable'>,
@@ -236,6 +237,7 @@ describe('approval Remote Event consumer', () => {
       callId: 'call-1',
       reason: 'needs access',
       displayReason: { en: 'Display reason', zh: '展示原因' },
+      detail: 'pwd\n  ls -a',
       signal: controller.signal,
     }, next)
     const pending = bench.pending.getSnapshot()[0]!
@@ -252,6 +254,7 @@ describe('approval Remote Event consumer', () => {
       toolName: 'bash',
       callId: 'call-1',
       reason: 'needs access',
+      detail: 'pwd\n  ls -a',
     })
 
     await pending.answer('allowed-once')
@@ -331,6 +334,7 @@ function panelProps(
   const messages: Record<string, string> = {
     waiting: 'Waiting',
     'detail.aria': 'Approval details',
+    auditDetails: 'Full details',
     escalation: `Tool ${pending.toolName} asks`,
     reject: 'Reject',
     allowOnce: 'Allow once',
@@ -346,6 +350,20 @@ function panelProps(
 }
 
 describe('ApprovalPanel', () => {
+  it('shows an exact standalone command as plain text and allows it once', async () => {
+    const detail = 'printf "<em>literal</em>"\n  pwd'
+    const pending = new PendingApproval(id('s1'), { toolName: 'exec', detail })
+    const renderSlot = vi.fn(() => null)
+    render(<ApprovalPanel {...panelProps(pending, renderSlot)} />)
+
+    const command = screen.getByRole('group', { name: 'Approval details' }).querySelector('pre')
+    expect(command?.textContent).toBe(detail)
+    expect(command?.querySelector('em')).toBeNull()
+    expect(renderSlot).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Allow once' }))
+    await expect(pending.result).resolves.toBe('allowed-once')
+  })
+
   it('renders fallback copy without detail and returns rejection', async () => {
     const pending = new PendingApproval(id('s1'), { toolName: 'bash' })
     const props = panelProps(pending)
@@ -393,7 +411,15 @@ describe('ApprovalPanel', () => {
     const props = panelProps(pending)
     const view = render(<ApprovalPanel {...props} />)
     expect(screen.getByText('English explanation')).toBeTruthy()
-    expect(screen.queryByText('audit reason')).toBeNull()
+    const details = screen.getByText('audit reason').closest('details')
+    expect(details?.open).toBe(false)
+    const summary = screen.getByText('Full details')
+    summary.focus()
+    fireEvent.keyDown(summary, { key: 'Enter', code: 'Enter' })
+    expect(pending.answerable).toBe(true)
+    fireEvent.click(screen.getByText('Full details'))
+    expect(details?.open).toBe(true)
+    expect(pending.answerable).toBe(true)
     view.rerender(<ApprovalPanel {...props} resolveReason={reason => reason['zh']!} />)
     expect(screen.getByText('中文说明')).toBeTruthy()
     expect(pending.reason).toBe('audit reason')

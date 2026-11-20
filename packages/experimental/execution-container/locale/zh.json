@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "隔离执行",
+    "description": "在隔离的 Docker 或 Apple 虚拟机工作区中运行会话脚本。"
+  }
+}

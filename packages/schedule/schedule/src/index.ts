@@ -151,11 +151,21 @@ function throwRemoteScheduleInput(error: unknown): never {
   throw error
 }
 
+/**
+ * Whether a stored destination delivers to one existing or reserved Session.
+ * @param target - Stored task destination.
+ * @param sessionId - Session to compare.
+ * @returns `true` for a `session` or `new_once` target naming that Session; a `new` target never matches.
+ */
+function deliversToSession(target: ScheduleTarget, sessionId: SessionId): boolean {
+  return target.kind !== 'new' && target.sessionId === sessionId
+}
+
 /** Active tasks that deliver to one existing Session. */
 function activeSessionTasks(domain: Domain<typeof scheduleDomain>, sessionId: SessionId): ScheduleTask[] {
   return [...domain.table('tasks').entries()]
     .map(([, task]) => task)
-    .filter(task => task.status === 'active' && task.target.kind !== 'new' && task.target.sessionId === sessionId)
+    .filter(task => task.status === 'active' && deliversToSession(task.target, sessionId))
 }
 
 /**
@@ -408,20 +418,22 @@ export class ScheduleService extends TypertRemoteService {
 
   /**
    * Read one page of Host tasks without activating target Sessions.
-   * @param request - Optional activity filter, page size, and offset.
+   * @param request - Optional activity and destination filters, page size, and offset.
    * @returns The requested page and total matching task count.
    */
   async list(request: ScheduleListRequest = {}): Promise<ScheduleListResult> {
     const { limit, offset } = resolveListPage(request)
+    const { active, targetSessionId } = request
     const items = (await this.entries())
-      .filter(entry => request.active === undefined || (entry.status === 'active') === request.active)
+      .filter(entry => (active === undefined || (entry.status === 'active') === active)
+        && (targetSessionId === undefined || deliversToSession(entry.target, targetSessionId)))
     const page = items.slice(offset, offset + limit)
     return { items: page, shown: page.length, total: items.length, limit, offset }
   }
 
   /**
    * Remote form of the shared Host-wide list.
-   * @param request - Optional activity filter, page size, and offset.
+   * @param request - Optional activity and destination filters, page size, and offset.
    * @returns The requested page and total matching task count.
    */
   @Remote('list')
@@ -444,13 +456,15 @@ export class ScheduleService extends TypertRemoteService {
 
   /**
    * Read one task without activating its target Sessions.
-   * @param request - Task identity.
+   * @param request - Task identity and optional destination filter.
    * @returns The task, or a non-mutating miss.
    */
   @Remote('view')
   async view(request: ScheduleViewRequest): Promise<ScheduleViewResult> {
-    const task = (await this.getDomain()).table('tasks').get(request.id)
-    return task === undefined ? { id: request.id, code: 'schedule_not_found' } : this.entry(task)
+    const { id, targetSessionId } = request
+    const task = (await this.getDomain()).table('tasks').get(id)
+    return task === undefined || (targetSessionId !== undefined && !deliversToSession(task.target, targetSessionId))
+      ? { id, code: 'schedule_not_found' } : this.entry(task)
   }
 
   /**

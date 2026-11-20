@@ -37,6 +37,12 @@ Promotion requires a named product role, documented public behavior and limitati
 | Package | Role | ctx key |
 |---|---|---|
 | [`action-cards`](action-cards/README.md) | Optional action cards below answers: the proposal tool, card state, user actions and status notices | `ctx.actionCards` |
+| [`assistant`](assistant/README.md) | One Assistant Session that delegates background work and recovers saved reports | `ctx.assistant` |
+| [`execution-container`](execution-container/README.md) | Isolated shell execution with a persistent workspace per Session | — |
+| [`operation-broker`](operation-broker/README.md) | Execute approved HTTPS JSON operations with authority-owned credentials | — |
+| [`operation-control`](operation-control/README.md) | Authorize and record isolated execution through a separate local service | — |
+| [`operation-evidence`](operation-evidence/README.md) | Preserve immutable execution evidence under a separate service account | — |
+| [`llm-codex`](llm-codex/README.md) | Local Codex CLI login for model requests | registers a provider on `ctx.llm` |
 | [`client-ui-action-cards`](client-ui-action-cards/README.md) | Card frame below completed answers, kind bodies and the proposal process row | — |
 | [`creation-recommendations`](creation-recommendations/README.md) | Explicit-need creation of persistent removable interface plugins | — |
 | [`client-ui-creation-recommendations`](client-ui-creation-recommendations/README.md) | Personalized page card body with location selection and undo | — |

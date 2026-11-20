@@ -490,6 +490,8 @@ export interface ScheduleCreateRequest {
 export interface ScheduleListRequest {
   /** `true` lists only active tasks; `false` lists only paused and ended tasks; omission lists all tasks. */
   readonly active?: boolean
+  /** Lists only tasks that deliver to this existing or reserved Session; omission lists tasks of every destination. */
+  readonly targetSessionId?: SessionId
   /** Page size from 1 through 500; the default is 100. */
   readonly limit?: number
   /** Number of sorted tasks to skip; the default is 0. */
@@ -514,6 +516,8 @@ export interface ScheduleListResult {
 export interface ScheduleViewRequest {
   /** Task to read. */
   readonly id: ScheduleId
+  /** Reads a task that delivers to another destination as a miss; omission reads a task of any destination. */
+  readonly targetSessionId?: SessionId
 }
 
 /** Non-mutating miss for an unknown task identity. */

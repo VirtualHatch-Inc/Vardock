@@ -1,23 +1,27 @@
-# Contributing
+# Contributing to Vardock
 
-English | [中文](CONTRIBUTING.zh.md)
+English | [日本語](CONTRIBUTING.ja.md) | [中文](CONTRIBUTING.zh.md)
 
-Thank you for your interest in contributing to DeepSeek Harness!
+Vardock is an independent customization of DeepSeek Harness. Discuss Vardock behavior and proposed changes in this repository; do not send Vardock-specific support requests to the upstream DSH maintainers. Participation follows the [Code of conduct](CODE_OF_CONDUCT.md).
 
-We deeply believe in the power of open source communities, and that belief has shaped this project from the very beginning.
+## Report a problem
 
-DeepSeek Harness is still at an early stage and under active development. We are sorry that we cannot accept external pull requests at the moment. However, contributing code to this repository is far from the only way to help. There are many other ways to get involved:
+Include the affected component, operating system, versions, minimal reproduction, expected behavior, and observed result. Remove access tokens, credentials, private inputs, and Session content from logs. Follow [Safety](SAFETY.md#local-operation-and-reports) for sensitive reports.
 
-- Identify and report issues or bugs in GitHub Discussions:
-  - Upvote discussions that you would like to bring to the team's attention. We are a very small team and may not be able to reply to every post, but we monitor them and consider them when allocating resources.
-- Contribute to the ecosystem:
-  - Create a plugin that excites you and share it with others:
-    - Associate your GitHub project with the `dsh-plugin` topic to help others discover your plugin.
-  - Write blog posts and how-to guides about DeepSeek Harness.
-  - Answer questions and help other members of the community.
+## Make a change
 
-DeepSeek Harness is designed to be deeply customizable. We do not believe that packages in the official repository are inherently more important than packages created by the community. You may consider this repository an idea, an official showcase, and a source of inspiration, but not a mandate from us.
+Keep changes small and reuse DSH services and Cordis extension points. Read [AGENTS.md](AGENTS.md), the [architecture](docs/architecture.md), and the [development guide](docs/development.md). Update the owning documentation and its language pair when behavior changes.
 
-We have already seen exciting projects emerge from the community, and we hope to see the ecosystem continue to grow in its own directions.
+Run checks appropriate to the changed component and report the commands and results. The [testing guide](docs/testing.md) describes unit, snapshot, provider, and build checks. Do not include runtime homes, local credentials, database contents, or generated build products in a contribution.
 
-Into the unknown.
+Preserve upstream copyright, license notices, and attribution. Source contributions use this repository’s [MIT License](LICENSE); disclose additional dependencies and the redistribution terms of any artwork or other supplied material.
+
+## Distribution
+
+The supported evaluation path is the [source-based macOS setup](packages/experimental/assistant/vardock/README.md). Inherited npm, desktop, Python, and website publishing scripts target DSH infrastructure and require a separate Vardock release configuration and redistribution review. A repository source release does not by itself authorize redistribution of every bundled dependency.
+
+## Versions
+
+A Vardock version is an annotated Git tag on the public repository named `vardock-vMAJOR.MINOR.PATCH`, or `vardock-vMAJOR.MINOR.PATCH-rc.N` for a release candidate; another repository pins Vardock by that tag. The `dsh-v*` tags mark upstream DSH releases, not Vardock versions. The root `package.json` keeps the upstream DSH version because [workspace constraints](scripts/check-workspace-constraints.ts) require every `@deepseek-ai/dsh*` package to carry the root version. Each tag message names the upstream release that the version is based on, for example `Based on dsh-v0.2.2-rc.2`.
+
+To install Vardock at a tag, clone the repository at that tag, run `pnpm install --frozen-lockfile`, and run `pnpm vardock setup` with a model route as in the [macOS setup guide](packages/experimental/assistant/vardock/README.md). Keep the checkout in place: the generated profiles reference its built packages.

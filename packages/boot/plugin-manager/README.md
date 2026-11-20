@@ -86,6 +86,7 @@ The CLI exposes `dsh plugin --profile <profile> version-exemptions`, `allow-vers
 
 | Field | Default | Meaning |
 |---|---|---|
+| `management` | `full` | `fixed` offers no bundle catalog and refuses manager mutations with `management-fixed`; contributed configuration pages and the read-only inventory remain available. Selected bundles stay active until the profile is edited and restarted. |
 | `pnpmCommand` | `pnpm` | The pnpm executable name or path, resolved through `PATH` like the `dsh plugin` command. |
 | `inspectTimeoutMs` | `20000` | Bound on one registry lookup an inspection runs, in milliseconds. |
 | `githubConnectionTimeoutMs` | `5000` | Deadline for the GitHub repository check before installation, in milliseconds. |

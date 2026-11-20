@@ -50,7 +50,11 @@ One shared `tool:schedule` system-prompt section requires explicit user authoriz
 - name: '@deepseek-ai/dsh-tool-schedule'
 ```
 
-The package declares no `Config` fields. It injects `ctx.tools` and `ctx.systemPrompt` and registers the four tools and their shared guidance once the scope resolves the Host `ctx.schedule` service, so a composition that keeps that service off mounts no Schedule tool. Each call acts for the Agent that dispatched it.
+| Field | Default | Meaning |
+|---|---|---|
+| `callerTargetOnly` | `false` | `true` limits `schedule_list`, `schedule_view`, and `schedule_edit` to tasks whose stored target delivers to the calling Session. Any other task reads as `schedule_not_found`, and an edit without `expectedUpdatedAt` uses the revision it checked. |
+
+It injects `ctx.tools` and `ctx.systemPrompt` and registers the four tools and their shared guidance once the scope resolves the Host `ctx.schedule` service, so a composition that keeps that service off mounts no Schedule tool. Each call acts for the Agent that dispatched it.
 
 -----
 
@@ -140,7 +144,7 @@ Append-only; newly visible content follows the reusable request prefix and does 
 
 - **No tools without the Host service** — a composition that mounts this package without `ctx.schedule` leaves the plugin pending, so none of the four tools register.
 - **Every call needs a calling Agent** — a call dispatched without one returns `internal_error` rather than guessing a Session.
-- **Every tool reaches every Host task** — `schedule_list` returns tasks that other Sessions created, and `schedule_view` and `schedule_edit` read, change, and delete any task by id. The authorization sentence guides model behavior; the Host does not validate user intent or add ownership checks per Session. A preset whose agents must not manage Host tasks omits the row.
+- **Every tool reaches every Host task** — `schedule_list` returns tasks that other Sessions created, and `schedule_view` and `schedule_edit` read, change, and delete any task by id. The authorization sentence guides model behavior; the Host does not validate user intent. A preset whose agents must not manage Host tasks omits the row, and a composition whose agents manage only their own deliveries sets `callerTargetOnly`.
 - **Deletion does not retract a queued message** — a message that the Host already delivered stays in the target Session inbox after a `schedule_edit` delete.
 - **Task timing belongs to the Host** — the tools expose no clock source, delivery retry, or execution result; those limits are the service's.
 - **Every tool refuses a delegated caller** — each of the four tools reads the calling Agent's delegation depth before it calls the service and returns `{ code: 'subagent_session', message: 'A delegated subagent cannot use scheduled tasks.' }` when that depth is above zero. The guard lives in this package and reads `delegationDepthOf` from `@deepseek-ai/dsh-subagent`, the same accounting the delegation cap enforces, so it holds under any preset that mounts the tools.

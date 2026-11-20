@@ -163,8 +163,8 @@ const coveragePartitionMode = coveragePartitionRaw === '1'
 // project below because CLI flags do not reach them (coverageTestTimeoutOptions
 // owns the rule and its reach).
 const laneTestBudget = coverageTestTimeoutOptions(process.env[COVERAGE_TEST_TIMEOUT_ENV])
-// Outside CI, forks follow the local worker budget; CI keeps Vitest's own default for its runner.
-const localWorkerBudget = process.env.CI === 'true' ? {} : { maxWorkers: defaultParallelism(process.env, undefined, LOCAL_TEST_PARALLELISM_CAP) }
+// Forks follow the local worker budget.
+const localWorkerBudget = { maxWorkers: defaultParallelism(undefined, LOCAL_TEST_PARALLELISM_CAP) }
 
 // These suites exercise process-global state, process APIs, or timing-sensitive process I/O
 // that worker threads cannot isolate reliably under aggregate gate contention.
@@ -187,15 +187,15 @@ const claudeCodeTestingAliases = {
   'claude-code': fileURLToPath(new URL('./packages/experimental/claude-code-mods/tests/support/claude-code.ts', import.meta.url)),
 }
 
-// The LiveShare client entry statically imports its generated `./remote` contribution, which exists
-// only in built `lib/` output. On a clean checkout Vite resolves that import while transforming the
-// entry, before `vi.mock` can answer it, so the jsdom assembly suites need a resolvable stand-in.
+// Client entries import their generated `./remote` contributions from `lib/`. Vite needs a
+// resolvable stand-in to transform these entries for source-only assembly tests.
 const liveshareRemoteBuild = fileURLToPath(new URL('./packages/experimental/liveshare/lib/typert.remote-client.js', import.meta.url))
 const chatImportRemoteBuild = fileURLToPath(new URL('./packages/experimental/deepseek-chat-import/lib/typert.remote-client.js', import.meta.url))
 const generatedRemoteAliases = {
   ...existsSync(liveshareRemoteBuild) ? {} : {
     '@deepseek-ai/dsh-experimental-liveshare/remote': fileURLToPath(new URL('./packages/experimental/liveshare/tests/generated-remote-stub.ts', import.meta.url)),
   },
+  '@deepseek-ai/dsh-assistant/remote': fileURLToPath(new URL('./packages/experimental/assistant/tests/generated-remote-stub.client.ts', import.meta.url)),
   ...existsSync(chatImportRemoteBuild) ? {} : {
     '@deepseek-ai/dsh-deepseek-chat-import/remote': fileURLToPath(new URL('./packages/experimental/deepseek-chat-import/tests/generated-remote-stub.ts', import.meta.url)),
   },
@@ -437,9 +437,7 @@ export default defineConfig({
           },
       reporter: coveragePartitionMode
         ? []
-        : process.env.CI
-          ? ['text', uncoveredLocationsReporter]
-          : ['text', 'html', uncoveredLocationsReporter],
+        : ['text', 'html', uncoveredLocationsReporter],
     },
   },
 })

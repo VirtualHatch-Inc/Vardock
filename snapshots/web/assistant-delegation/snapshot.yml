@@ -1,0 +1,11 @@
+version: 1
+scenario: assistant-delegation
+profile: web
+composition: web-assistant-delegation
+recording: authored
+platform: posix
+header:
+  class: web-assistant-delegation
+  pin: true
+  systemPromptSource: minimal-read-image
+  childToolSchemas: [1]

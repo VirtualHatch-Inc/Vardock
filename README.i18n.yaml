@@ -2,33 +2,39 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write README.md
-/deepseek-harness:
-  en: f68c4f080ce55ff2
-  zh: 88a76d7f7f0b260e
-/deepseek-harness/developer-preview:
-  en: 4ef4d8a71ac143f0
-  zh: 1bfc3149ba8e5543
-/deepseek-harness/run:
-  en: 4e0248e4c6474fc6
-  zh: eb2fb8d78c7d6bc0
-/deepseek-harness/run/run-from-npm:
-  en: e22005cd42e6cbad
-  zh: 0f536f4208df1d60
-/deepseek-harness/run/run-from-source:
-  en: 819e3f7c144d0d64
-  zh: de815f040975dba7
-/deepseek-harness/community-and-support:
-  en: 20acf6451fdc869b
-  zh: d06246dd019ecef7
-/deepseek-harness/contributing:
-  en: cabc2d3e9f8898bd
-  zh: 83b6d238bae29ce3
-/deepseek-harness/development:
-  en: 803ca2b11b497bed
-  zh: 8b4071eb0e7783ef
-/deepseek-harness/citation:
-  en: 6704e9e5a8d49a91
-  zh: 85c9cdd8d56f8e9d
-/deepseek-harness/license:
-  en: 926995344fc1c72b
-  zh: c92fab5abf85932f
+/vardock:
+  en: 2338a64e49c27768
+  zh: f0c069fbe0c5ebcc
+/vardock/why-vardock:
+  en: 32b4b7e8eb694def
+  zh: 70c89584db5b3cac
+/vardock/how-it-works:
+  en: bc273645b793c5bb
+  zh: 3ef1f8cbf4b7ed1a
+/vardock/what-you-can-do:
+  en: 3704842841a5ac0e
+  zh: 32762e07e05d058b
+/vardock/what-you-can-do/reads-automatic-sends-reviewed:
+  en: 11615bc8ea47a471
+  zh: 4cdcdc132e54873a
+/vardock/start-on-macos:
+  en: c5e84a8a3b02b882
+  zh: b964d8c1a57d794a
+/vardock/start-on-linux:
+  en: e2314bc40e468b42
+  zh: 44981067d2d447c2
+/vardock/status:
+  en: 91557ad8d7a732f9
+  zh: cd637f1b17493609
+/vardock/documentation:
+  en: 55a7cb6503322948
+  zh: e0c34bac40540245
+/vardock/built-on-deepseek-harness:
+  en: ef074164092855e6
+  zh: 3e1c2585ab747117
+/vardock/get-in-touch:
+  en: d70a053d4a2fcf89
+  zh: 4ecbed4c1ac1f858
+/vardock/license:
+  en: 68e9f9fa9584c763
+  zh: 2406095a1e5a875d

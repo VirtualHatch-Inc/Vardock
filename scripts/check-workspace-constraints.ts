@@ -214,6 +214,14 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh-client-ui-theme': ['lib/styles'],
   // The physical-key protocol is a public entry usable without the browser service.
   '@deepseek-ai/dsh-client-shortcuts': ['lib/protocol.js'],
+  // Agent Hosts load the shell and model adapters independently of the authority; `verify` loads the library.
+  '@deepseek-ai/dsh-operation-control': ['lib/agent.js', 'lib/model-agent.js', 'lib/handoff.js', 'lib/library.js'],
+  // The MCP tool provider mounts beside the HTTPS provider under its own service name.
+  '@deepseek-ai/dsh-operation-broker': ['lib/mcp.js', 'lib/library.js'],
+  // The authority and `verify` load the witness client without the witness service.
+  '@deepseek-ai/dsh-operation-evidence': ['lib/library.js'],
+  // The authority loads the exec tool and transfer rules without the execution backends.
+  '@deepseek-ai/dsh-execution-container': ['lib/library.js'],
   // The CPython side ships as source .py files, published as-is rather than built.
   '@deepseek-ai/dsh-experimental-ptc-runtime-python': ['py/**/*.py'],
   '@deepseek-ai/dsh-experimental-speech-to-text-sensevoice': ['runtime/assets.json'],

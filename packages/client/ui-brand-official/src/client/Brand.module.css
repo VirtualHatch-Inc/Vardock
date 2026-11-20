@@ -1,0 +1,12 @@
+.name {
+  flex: none;
+}
+
+.onDark,
+:global(body[data-ds-dark-theme]) .onLight {
+  display: none;
+}
+
+:global(body[data-ds-dark-theme]) .onDark {
+  display: inline;
+}

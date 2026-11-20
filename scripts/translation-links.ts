@@ -61,7 +61,7 @@ interface Replacement {
 /** Markdown nodes whose destinations translation links resolve. */
 export type LinkNode = Extract<Nodes, { type: 'link' | 'definition' }>
 
-/** Offset of the one top-level switcher link immediately following the H1. */
+/** Offset of the paired-language header link, optionally alongside a Japanese translation link. */
 export function languageSwitcherLinkOffset(
   tree: Nodes,
   markdown: string,
@@ -78,10 +78,12 @@ export function languageSwitcherLinkOffset(
     const end = node.position.end.offset
     if (start === undefined || end === undefined) continue
     const authored = markdown.slice(start, end)
-    if (!/^(?:English \| \[中文\]\([^\n]+\)|\[English\]\([^\n]+\) \| 中文)$/.test(authored)) continue
+    const pattern = /^(?:English \| (?:\[日本語\]\([^\n)]+\) \| )?\[中文\]\([^\n]+\)|\[English\]\([^\n]+\) \| (?:\[日本語\]\([^\n)]+\) \| )?中文)$/
+    if (!pattern.test(authored)) continue
     const links = node.children.filter((child): child is Extract<Nodes, { type: 'link' }> => child.type === 'link')
-    if (links.length === 1 && accepted.has(links[0]?.url ?? '')) {
-      return links[0]?.position?.start.offset
+    const counterpart = links.filter(link => accepted.has(link.url))
+    if (counterpart.length === 1) {
+      return counterpart[0]?.position?.start.offset
     }
   }
   return undefined

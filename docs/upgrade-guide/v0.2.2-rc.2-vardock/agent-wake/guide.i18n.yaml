@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.2-vardock/agent-wake/guide.md
+/:
+  en: 77ee4556883d2b6e
+  zh: 21b3a8a6820ecaa4
+/custom-agent-drivers-implement-wake:
+  en: 50286be96b24fd73
+  zh: c35f7478f7420322
+/custom-agent-drivers-implement-wake/change:
+  en: c8f21c2ee19311aa
+  zh: 1cb921dba785f4f2
+/custom-agent-drivers-implement-wake/migration:
+  en: 0492e95a8a4be8f3
+  zh: 5588b1f0d3ffa7d5

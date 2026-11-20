@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { apply, inject } from '../src/client/index.ts'
-import { OfficialBrandMark, OfficialBrandName } from '../src/client/Brand.tsx'
+import { OfficialBrandMark, OfficialBrandName, VardockMark, VardockName } from '../src/client/Brand.tsx'
 import { apply as hostApply } from '../src/index.ts'
 
 afterEach(() => {
@@ -53,6 +53,17 @@ describe('official browser-brand plugin', () => {
     expect(subject.slots.entries('sidebar.brand.mark')).toHaveLength(0)
     expect(subject.slots.entries('sidebar.brand.name')).toHaveLength(0)
     expect(subject.slots.entries('conversation.hero.frame')).toHaveLength(1)
+  })
+
+  it('fills and disposes the default build’s sidebar and conversation brand slots', async () => {
+    vi.stubEnv('DSH_CLIENT_BUILD_PROFILE', undefined)
+    const subject = await bench()
+    const fiber = subject.ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    const holes = [...HOLES, HERO_HOLE] as const
+    for (const hole of holes) expect(subject.slots.entries(hole)).toHaveLength(1)
+    await fiber.dispose()
+    for (const hole of holes) expect(subject.slots.entries(hole)).toHaveLength(0)
   })
 
   it('fills declarations before or after apply and removes every occupant on teardown', async () => {
@@ -110,5 +121,18 @@ describe('official browser-brand plugin', () => {
     expect(mark.container.querySelector('svg')?.getAttribute('width')).toBe('34')
     mark.rerender(<OfficialBrandMark size={24} />)
     expect(mark.container.querySelector('svg')?.getAttribute('width')).toBe('24')
+  })
+
+  it('uses the supplied artwork as separate mark and name images', () => {
+    const { container } = render(<>
+      <VardockMark size={34} className="hero-mark" />
+      <VardockName />
+    </>)
+    const mark = container.querySelector('svg.hero-mark')
+    expect(mark?.getAttribute('width')).toBe('34')
+    expect(mark?.getAttribute('viewBox')).toBe('0 0 710 488')
+    expect(new Set([...mark!.querySelectorAll('image')].map(image => image.getAttribute('href'))).size).toBe(2)
+    expect([...container.querySelectorAll('svg:not(.hero-mark) image')].map(image => image.getAttribute('href')))
+      .toEqual([expect.stringMatching(/vardock-logo-light\.png$/), expect.stringMatching(/vardock-logo\.png$/)])
   })
 })

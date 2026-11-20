@@ -1,7 +1,7 @@
 /** Real profile patch behavior and reference lifetime. */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { expect, it, vi } from 'vitest'
+import { expect, it, onTestFinished, vi } from 'vitest'
 import { parse } from 'yaml'
 import z from '@deepseek-ai/schemastery'
 import { configurationFixture as fixture } from './configuration-fixture.ts'
@@ -74,6 +74,21 @@ it('preserves configuration expressions while editing a different live field', a
   const second = [...restored.loader.entries()].find(entry => entry.options.id === 'second')!
   expect((second.fiber!.effectiveConfig as { ordinary: string }).ordinary).toBe('untouched-expression')
   expect(restored.settings.describe().find(row => row.ns === 'first')!.value).toEqual({ count: 4, list: [] })
+})
+
+it('refuses form input that would persist as an evaluated configuration expression', async () => {
+  const { ctx, profile } = await fixture()
+  const before = readFileSync(profile.patchPath, 'utf8')
+  const evaluated = vi.fn(() => 3)
+  Object.assign(globalThis, { settingsExpressionProbe: evaluated })
+  onTestFinished(() => { Reflect.deleteProperty(globalThis, 'settingsExpressionProbe') })
+  const expression = { __jsExpr: 'settingsExpressionProbe()' }
+  await expect(ctx.settings.update('first', { count: expression })).rejects.toThrow('configuration expression')
+  await expect(ctx.settings.replace('first', { list: [{ name: 'a', ...expression }] })).rejects.toThrow('configuration expression')
+  await expect(ctx.settings.mutate('first', [{ op: 'set', path: ['count'], value: expression }])).rejects.toThrow('configuration expression')
+  await expect(ctx.settings.mutate('first', [{ op: 'set', path: ['count', '__jsExpr'], value: 'settingsExpressionProbe()' }])).rejects.toThrow('configuration expression')
+  expect(evaluated).not.toHaveBeenCalled()
+  expect(readFileSync(profile.patchPath, 'utf8')).toBe(before)
 })
 
 it('edits array elements and appends without replacing redacted secrets', async () => {

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Intermediário de operações HTTPS",
+    "description": "Envia solicitações JSON aprovadas para endpoints HTTPS configurados usando as credenciais da autoridade."
+  }
+}

@@ -131,7 +131,6 @@ export function teardown(): void {
     cpuModel,
     platform: `${process.platform}-${process.arch}`,
     node: process.version,
-    revision: process.env['GITHUB_SHA'],
     generatedAt: new Date().toISOString(),
     cores: availableParallelism(),
     measuredProfile: matchMachineProfile(cpuModel),
@@ -145,7 +144,6 @@ export interface ReportData {
   readonly cpuModel: string
   readonly platform: string
   readonly node: string
-  readonly revision: string | undefined
   readonly generatedAt: string
   /** Logical CPUs available to the measuring process; replaces the matched profile's core count. */
   readonly cores: number
@@ -255,7 +253,7 @@ function bars(svg, rows, ticks, format) {
   svg.setAttribute('height', String(top + rows.length * rowH + 8));
   svg.innerHTML = html;
 }
-$('meta').textContent = 'Measured on ' + data.cpuModel + ' with ' + data.cores + ' available CPUs (' + data.platform + ', Node ' + data.node + ')' + (data.revision ? ', revision ' + data.revision.slice(0, 12) : '') + ', ' + data.generatedAt + '.';
+$('meta').textContent = 'Measured on ' + data.cpuModel + ' with ' + data.cores + ' available CPUs (' + data.platform + ', Node ' + data.node + ')' + ', ' + data.generatedAt + '.';
 const machine = p => p.cpu + ', ' + p.cores + ' CPUs, ' + p.storage;
 for (const p of profiles) $('measured').add(new Option(p.label + ' — ' + machine(p), p.id));
 $('measured').value = data.measuredProfile ?? 'github-ubuntu-24.04';

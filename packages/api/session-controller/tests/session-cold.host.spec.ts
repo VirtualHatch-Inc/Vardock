@@ -730,7 +730,7 @@ describe('subagent ownership fence', () => {
       inbox: inboxFor(), status: 'idle', ctx, followup,
       cancel: vi.fn(), whenIdle: () => Promise.resolve(),
       runMaintenance: async () => { throw new Error('unexpected maintenance') },
-      send: vi.fn(), inject: vi.fn(), steer: vi.fn(),
+      send: vi.fn(), wake: vi.fn(), inject: vi.fn(), steer: vi.fn(),
     }
     await ctx.agents.register(agent)
     const remote = await createSessionTestRemote(ctx, { defaultModelSelection: () => ({ provider: 'p', model: 'm' }), cwd: '/tmp' })
@@ -757,7 +757,7 @@ describe('subagent ownership fence', () => {
       inbox: inboxFor(), status: 'idle', ctx, followup,
       cancel: vi.fn(), whenIdle: () => Promise.resolve(),
       runMaintenance: async () => { throw new Error('unexpected maintenance') },
-      send: vi.fn(), inject: vi.fn(), steer: vi.fn(),
+      send: vi.fn(), wake: vi.fn(), inject: vi.fn(), steer: vi.fn(),
     }
     await ctx.agents.register(agent)
     const remote = await createSessionTestRemote(ctx, {
@@ -890,6 +890,7 @@ describe('sessions.prompt synchronous rejection', () => {
       whenIdle: vi.fn(() => Promise.resolve()),
       runMaintenance: async () => { throw new Error('unexpected maintenance') },
       send: vi.fn(),
+      wake: vi.fn(),
       inject: vi.fn(),
       cancel: vi.fn(),
       session,
@@ -997,7 +998,7 @@ describe('sessions.prompt synchronous rejection', () => {
       options: { provider: 'p', model: 'm' },
       cancel: vi.fn(), whenIdle: () => Promise.resolve(),
       runMaintenance: async () => { throw new Error('unexpected maintenance') },
-      send: vi.fn(), inject: vi.fn(),
+      send: vi.fn(), wake: vi.fn(), inject: vi.fn(),
       followup: () => { throw new Error('agent "session-throwing" lifecycle disposed') },
       steer: () => { throw new Error('agent "session-throwing" lifecycle disposed') },
     })

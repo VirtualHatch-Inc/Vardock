@@ -3,44 +3,38 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write apps/desktop/windows-signing/README.md
 /:
-  en: 5b2af461afadb867
-  zh: c7558c795a752944
-/windows-signing-and-runner-operations:
-  en: 65f1ac70a69830fd
-  zh: cd5825b41e9e30f4
-/windows-signing-and-runner-operations/summary:
-  en: 3eec637b807a2d4c
-  zh: e042992b9ea83345
-/windows-signing-and-runner-operations/table-of-contents:
-  en: 3a812cc5ad554fd3
-  zh: 0401b5764c155c0b
-/windows-signing-and-runner-operations/trust-and-isolation-limits:
-  en: 0c261f3948178d55
-  zh: 1086cd882468ad8f
-/windows-signing-and-runner-operations/machine-setup-and-runner-startup:
-  en: bb889e9514678d1c
-  zh: 48cbec1e907d6a2b
-/windows-signing-and-runner-operations/machine-setup-and-runner-startup/supervised-startup:
-  en: cada81c15a20ecc2
-  zh: 80b7a4af7b1e0e5d
-/windows-signing-and-runner-operations/machine-setup-and-runner-startup/optional-network-dependency:
-  en: 60f34f8637b3c252
-  zh: 805435964ab20263
-/windows-signing-and-runner-operations/signing-configuration:
-  en: 4b5548818375eb9a
-  zh: 8c975adbb1dca9c8
-/windows-signing-and-runner-operations/signing-and-timestamp-completion:
+  en: 7abcea4bf8d650e3
+  zh: 0a768b8c296942d2
+/windows-signing:
+  en: a097af874e216d31
+  zh: 0d54376bb4f09e39
+/windows-signing/summary:
+  en: 9e361bffdc3897cb
+  zh: 90ddbae0da896749
+/windows-signing/table-of-contents:
+  en: 4e65b2ef463e5591
+  zh: 07de0376016fd752
+/windows-signing/trust-and-isolation-limits:
+  en: f5b121db7da1325e
+  zh: a25419969e78ad59
+/windows-signing/machine-setup:
+  en: 6a5e5242f306bad8
+  zh: 356edd1753b282fc
+/windows-signing/signing-configuration:
+  en: 0c9ec18ffa9fa2c4
+  zh: 342a537cbe3152c5
+/windows-signing/signing-and-timestamp-completion:
   en: a8d23c931cafc236
   zh: 28fd4860549cdc7b
-/windows-signing-and-runner-operations/failure-records-and-operator-recovery:
+/windows-signing/failure-records-and-operator-recovery:
   en: 5401b605a2f3a44e
   zh: fc1f6ee667bcd20d
-/windows-signing-and-runner-operations/signature-cache-and-concurrent-stages:
+/windows-signing/signature-cache-and-concurrent-stages:
   en: 6e8208d19ad510e5
   zh: eee42e8938c0f603
-/windows-signing-and-runner-operations/verification-limits:
-  en: 53f1fe23f54af84e
-  zh: d219606367ff2d72
-/windows-signing-and-runner-operations/dev-note:
+/windows-signing/verification-limits:
+  en: 7bc91563916c1ebf
+  zh: 611a6cc76efbc0e9
+/windows-signing/dev-note:
   en: b75c8458928b72b9
   zh: 003ba4e17b4b5269

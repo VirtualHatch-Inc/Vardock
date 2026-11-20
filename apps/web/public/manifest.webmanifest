@@ -1,6 +1,6 @@
 {
-  "name": "DeepSeek Harness",
-  "short_name": "DSH",
+  "name": "Vardock",
+  "short_name": "Vardock",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

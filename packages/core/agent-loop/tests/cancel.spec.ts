@@ -9,7 +9,7 @@
 import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import { ToolCallId, createUserMessage, expandAssistantStream } from '@deepseek-ai/dsh-llm'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import SessionStore, { Session, SessionId, SessionLogOffset, TurnEndReason } from '@deepseek-ai/dsh-session'
@@ -218,18 +218,24 @@ describe('Agent.cancel()', () => {
     expect(adapter.requests).toHaveLength(3)
   })
 
-  it('cancel({ keepInbox: true }) latches a waking send landing in the abort-to-idle window', async () => {
+  it('wakes retained inbox input after the canceled turn settles', async () => {
     const adapter = new MockAdapter(['hang', textResponse('B reply')])
     const ctx = await harness(adapter)
+    onTestFinished(() => ctx.fiber.dispose())
     const agent = await ctx.agentLoop.create(SessionId('latch-window'), { provider: 'mock', model: 'mock' })
+    const started = Promise.withResolvers<undefined>()
+    ctx.on('agent/assistant-stream', ({ agent: subject, frame }) => {
+      if (subject === agent && frame.type === 'chunk') started.resolve(undefined)
+    })
 
     send(agent, 'active')
-    await new Promise(resolve => setTimeout(resolve, 30))
+    await started.promise
 
-    // The abort signal is set but the driver has not converged to idle yet:
-    // the waking send must be latched, not parked until another wake.
+    const input = createUserMessage({ content: [{ type: 'text', text: 'B' }], source: { kind: 'user' } })
+    agent.send(input, 'next-turn', false)
     agent.cancel({ kind: 'user' }, { keepInbox: true })
-    send(agent, 'B')
+    agent.wake()
+    expect(agent.inbox.nextTurn).toEqual([input])
 
     await agent.whenIdle()
 
@@ -329,6 +335,29 @@ describe('Agent.cancel()', () => {
 
     expect(adapter.requests).toHaveLength(1)
     expect(userTexts(agent)).toEqual(['active'])
+  })
+
+  it('drops a deferred wake when disposal cancellation preserves the inbox', async () => {
+    const adapter = new MockAdapter(['hang'])
+    const ctx = await harness(adapter)
+    onTestFinished(() => ctx.fiber.dispose())
+    const agent = await ctx.agentLoop.create(SessionId('dispose-preserved-wake'), { provider: 'mock', model: 'mock' })
+    const started = Promise.withResolvers<undefined>()
+    ctx.on('agent/assistant-stream', ({ agent: subject, frame }) => {
+      if (subject === agent && frame.type === 'chunk') started.resolve(undefined)
+    })
+
+    send(agent, 'active')
+    await started.promise
+    const input = createUserMessage({ content: [{ type: 'text', text: 'retained' }], source: { kind: 'user' } })
+    agent.send(input, 'next-turn', false)
+    agent.wake()
+    agent.cancel({ kind: 'disposed' }, { keepInbox: true })
+    await agent.whenIdle()
+
+    expect(userTexts(agent)).toEqual(['active'])
+    expect(agent.inbox.nextTurn).toEqual([input])
+    expect(adapter.requests).toHaveLength(1)
   })
 
   it.each(['before scope cleanup', 'during scope cleanup'])('does not start an idle Agent after disposal begins %s', async (window) => {

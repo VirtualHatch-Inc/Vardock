@@ -91,19 +91,32 @@ const PEER_REQUIRED_HOST_EXPORTS = {
   '@deepseek-ai/dsh-experimental-worktree': ['generatedWorktreeName', 'CREATED_RECORD', 'createdWorktreeSchema'],
   // The forge panel matches ctx.fs failures with `instanceof FsError`.
   '@deepseek-ai/dsh-fs': ['FsError'],
+  // Assistant uses these helpers through the deployment's LLM peer; imported message and tool-call ids use the installed runtime's brands.
+  '@deepseek-ai/dsh-llm': ['boundContextSummary', 'createUserMessage', 'errorChain', 'isAgentLoopRequest', 'LlmError', 'MessageId', 'ToolCallId'],
+  // Assistant uses the installed handoff service's errors, transfer limits, and work schemas.
+  '@deepseek-ai/dsh-operation-control/handoff': [
+    'OperationControlError', 'DEFAULT_MAX_FILE_BYTES', 'MAX_FILE_TRANSFER_BYTES', 'MAX_WORK_INPUTS',
+    'workInputPath', 'workGrantSchema', 'workPermissionsSchema',
+  ],
+  // Assistant reviews entrance schedule changes against the installed Schedule service's tasks.
+  '@deepseek-ai/dsh-schedule': ['ScheduleId'],
   '@deepseek-ai/dsh-scope': ['carrierKeyOf', 'createScope', 'scopeOf', 'scopeTarget'],
-  // Imported message and tool-call ids use the installed runtime's brands.
-  '@deepseek-ai/dsh-llm': ['MessageId', 'ToolCallId'],
   // appendPluginRecord writes through the Session class's private log; pluginRecordOf is stateless.
   // The DeepSeek chat importer validates its seed with the installed Session class before storing it.
   '@deepseek-ai/dsh-session': ['SESSION_FORMAT_VERSION', 'Session', 'SessionLogOffset', 'SessionSeq', 'appendPluginRecord', 'pluginRecordOf'],
   '@deepseek-ai/dsh-session-persistence': ['SessionPersistenceNotFoundError'],
+  // Assistant distinguishes lookup failures from its configured Session query provider.
+  '@deepseek-ai/dsh-session-query': ['SessionQueryError'],
   // Imported titles follow the installed title service's normalization.
   '@deepseek-ai/dsh-session-title': ['normalizeSessionTitle'],
+  // Assistant declares a table for the storage-domain service it injects.
+  '@deepseek-ai/dsh-storage-domain': ['domainTable'],
   // Readers recognize a deadline's TimeoutReason only by `instanceof` against their own copy.
   '@deepseek-ai/dsh-timeout': ['deadline'],
   // Imported web tool results must render exactly like the installed web tools' results and cards.
   '@deepseek-ai/dsh-tool-web': ['fetchMetaFromValue', 'formatFetchOutput', 'formatSearchOutput', 'searchMetaFromValue'],
+  // Assistant declares tools for the registry it injects.
+  '@deepseek-ai/dsh-tools': ['defineTool'],
 } as const satisfies HostDependencyExports
 
 /** Exact import specifier to reviewed runtime exports. */

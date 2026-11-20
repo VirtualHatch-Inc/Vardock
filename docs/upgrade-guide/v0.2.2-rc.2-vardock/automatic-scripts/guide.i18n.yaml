@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.2-vardock/automatic-scripts/guide.md
+/:
+  en: 062ec636f9513c1a
+  zh: c1c10884beabdd08
+/automatic-scripts-in-vardock-setup:
+  en: d6a7cba90491901c
+  zh: f35e549122a42e59
+/automatic-scripts-in-vardock-setup/change:
+  en: 167ef764b3e6dc77
+  zh: 9fc016dbfda32c64
+/automatic-scripts-in-vardock-setup/migration:
+  en: 8d074feb61b4a192
+  zh: cc262ce07e91c1de

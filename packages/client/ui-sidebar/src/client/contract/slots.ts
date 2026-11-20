@@ -233,6 +233,11 @@ export type SidebarRootInjected = {
   hooks: {
     panels: ObservableSnapshot<readonly SidebarPanelMetadata[]>
     shortcuts: ObservableSnapshot<readonly ShortcutCatalogEntry[]>
+    /** Custom label and access requirement for the primary conversation control, when installed. */
+    conversationEntrance: ObservableSnapshot<{
+      readonly label: string
+      readonly action: Parameters<PropsRuntime<'sidebar'>['useRemoteAccess']>[0]
+    } | null>
     /** Ids of unpinned panel launchers held in memory until plugin reload. */
     entryPins: ObservableSnapshot<readonly string[]>
     /** Whether `sidebar.panellist.actions` has registrations. */

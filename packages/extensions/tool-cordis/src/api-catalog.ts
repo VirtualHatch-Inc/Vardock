@@ -407,16 +407,154 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'async request(req: ApprovalRequest): Promise<ApprovalOutcome>',
-        description: 'Ask the composed answerers to decide one readonly same-process request. The service borrows the request, agent, session, and live signal directly. The request requires an open turn because the audit pair must be enclosed by the durable log\'s commit/replay boundary; an idle ask rejects before appending anything. The answerer phase always produces an outcome: an aborted signal yields `\'cancelled\'`, a missing or throwing answerer yields `\'unavailable\'` (fail closed), and a rogue non-vocabulary return value is normalized to `\'unavailable\'`. A failure that prevents either audit append from committing still rejects because returning an unlogged decision would violate the pair. Session contains post-commit observer failures, so an authoritative append cannot reject the request or suppress its matching audit event.',
+        description: 'Ask the composed answerers to decide one readonly same-process request. The service borrows the request, agent, session, and live signal directly. A tool request belongs to an open turn. An idle ask rejects before appending anything. The answerer phase always produces an outcome: an aborted signal yields `\'cancelled\'`, a missing or throwing answerer yields `\'unavailable\'` (fail closed), and a rogue non-vocabulary return value is normalized to `\'unavailable\'`. A failure that prevents either audit append from committing still rejects because returning an unlogged decision would violate the pair. Session contains post-commit observer failures, so an authoritative append cannot reject the request or suppress its matching audit event.',
         parameters: [{ name: 'req', description: 'the pending decision (agent, tool identity, reason, signal).' }],
         returns: 'the closed outcome; `\'allowed-once\'` is the only grant.',
         throws: ['when no turn is open or either audit event fails before the session append commit point.'],
+      },
+      {
+        signature: 'async requestBackground(req: ApprovalRequest): Promise<ApprovalOutcome>',
+        description: 'Ask for one decision on a background operation, including while the answering agent is idle. The caller supplies a live Session with an active persistence writer. Flush the ask before dispatch and the decision before returning. A failed audit or checkpoint prevents a grant.',
+        parameters: [{ name: 'req', description: 'The answering agent, exact operation in the audit reason, presentation detail, and cancellation signal.' }],
+        returns: 'The persisted outcome under the answering Session\'s policy. Only `allowed-once` grants the request.',
+        throws: ['When the optional `sessions` service or a Session checkpoint listener is unavailable, or an audit append or flush fails.'],
       },
       {
         signature: 'overrideOf(session: Session): ApprovalPolicy | undefined',
         description: 'Read the session override without applying the configured default.',
         parameters: [{ name: 'session', description: 'session whose log supplies the override.' }],
         returns: 'the last logged policy, or `undefined` without one.',
+      },
+    ],
+  },
+  {
+    key: 'assistant',
+    summary: 'Dispatches durable requests once and returns explicit worker reports to the main Session.',
+    description: 'Dispatches durable requests once and returns explicit worker reports to the main Session.',
+    methods: [
+      {
+        signature: 'readonly mainSessionId: SessionId',
+        description: 'Ordinary Session that owns all delegation commands and result notices.',
+        parameters: [],
+      },
+      {
+        signature: '@Remote entrance(signal: AbortSignal): { sessionId: SessionId }',
+        description: 'Resolve the Session opened by the browser\'s Assistant launcher.',
+        parameters: [{ name: 'signal', description: 'launcher request lifetime.' }],
+        returns: 'the configured Session identity when the caller may access it.',
+      },
+      {
+        signature: '@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async workStatus(sessionId: SessionId, signal: AbortSignal): Promise<WorkStatusSnapshot>',
+        description: 'Inspect the entrance grant and retained work without reserving operations or retrying dispatch.',
+        parameters: [{ name: 'sessionId', description: 'configured entrance Session.' }, { name: 'signal', description: 'owner read lifetime.' }],
+        returns: 'Worker reports, independently verified operation status, and the configured refresh delay.',
+      },
+      {
+        signature: '@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async grantSettings(sessionId: SessionId, signal: AbortSignal): Promise<OperationGrantBudget>',
+        description: 'Read the effective limits through the owner-only authority connection.',
+        parameters: [{ name: 'sessionId', description: 'Configured entrance Session.' }, { name: 'signal', description: 'Owner request lifetime.' }],
+        returns: 'Current limits and revision, including after expiry.',
+      },
+      {
+        signature: '@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async connections(sessionId: SessionId, signal: AbortSignal): Promise<BrokerConnections>',
+        description: 'List the external actions the authority permits and whether each has a stored credential.',
+        parameters: [{ name: 'sessionId', description: 'Configured entrance Session.' }, { name: 'signal', description: 'Owner request lifetime.' }],
+        returns: 'Each permitted action and its credential state, never a credential value.',
+      },
+      {
+        signature: '@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async records(sessionId: SessionId, after: OperationId | undefined, signal: AbortSignal): Promise<BusinessRecords>',
+        description: 'Read one page of the authority\'s business records across every work Session, newest first.',
+        parameters: [{ name: 'sessionId', description: 'Configured entrance Session.' }, { name: 'after', description: 'Cursor from the preceding page, or undefined for the newest records.' }, { name: 'signal', description: 'Owner request lifetime.' }],
+        returns: 'Each record\'s status and exact request body, and a cursor when older records exist.',
+      },
+      {
+        signature: '@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async resolveBusiness(sessionId: SessionId, resolution: BusinessResolution, signal: AbortSignal): Promise<{ confirmed: boolean }>',
+        description: 'Record the owner\'s determination after checking an unresolved external request.',
+        parameters: [{ name: 'sessionId', description: 'Configured entrance Session.' }, { name: 'resolution', description: 'Operation and checked outcome.' }, { name: 'signal', description: 'Owner request lifetime; reread records if the reply is lost.' }],
+        returns: 'Whether the witness confirmed the determination.',
+      },
+      {
+        signature: '@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async setConnection(sessionId: SessionId, update: BrokerConnectionUpdate, signal: AbortSignal): Promise<BrokerConnections>',
+        description: 'Change one connection in the authority: the owner\'s stored token, or a permitted external action\'s unattended rules.',
+        parameters: [{ name: 'sessionId', description: 'Configured entrance Session.' }, { name: 'update', description: 'Target and its replacement token or `null` to remove it, or an action\'s complete rule list. This Host forwards the value without retaining it.' }, { name: 'signal', description: 'Cancels the wait; a lost response requires rereading connections.' }],
+        returns: 'The connections after the change, never a credential value.',
+      },
+      {
+        signature: '@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async updateGrant(sessionId: SessionId, update: OperationGrantUpdate, signal: AbortSignal): Promise<OperationGrantBudget>',
+        description: 'Apply an owner\'s reviewed budget and expiry without changing capability permissions.',
+        parameters: [{ name: 'sessionId', description: 'Configured entrance Session.' }, { name: 'update', description: 'Exact limits and the revision the owner reviewed.' }, { name: 'signal', description: 'Cancels the wait; a lost response requires rereading settings.' }],
+        returns: 'Witnessed effective limits; earlier reservations and outcomes remain retained.',
+      },
+      {
+        signature: '@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async stopWork(sessionId: SessionId, workId: AuthorityWorkId, signal: AbortSignal): Promise<{ status: WorkPhase }>',
+        description: 'Record an owner stop for an accepted work request. Earlier effects remain inspectable.',
+        parameters: [{ name: 'sessionId', description: 'configured entrance Session.' }, { name: 'workId', description: 'retained work request to stop.' }, { name: 'signal', description: 'cancels before the stop commits. A lost response may follow a committed stop.' }],
+        returns: 'The durable work state, which may already be terminal.',
+      },
+      {
+        signature: '@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async checkOutcome(sessionId: SessionId, workId: AuthorityWorkId, operationId: OperationId, signal: AbortSignal): Promise<{ completion: \'unconfirmed\' | \'pending\' | \'succeeded\' | \'failed\' }>',
+        description: 'Check a retained external effect through the authority\'s read-only reconciliation lookup.',
+        parameters: [{ name: 'sessionId', description: 'configured entrance Session.' }, { name: 'workId', description: 'exact assignment that owns the operation, including after a continuation.' }, { name: 'operationId', description: 'retained operation to check.' }, { name: 'signal', description: 'cancels the owner wait. Inspect the retained outcome if the response is lost.' }],
+        returns: 'The latest witnessed external completion state.',
+      },
+      {
+        signature: 'list(): Work[]',
+        description: 'Read durable work records.',
+        parameters: [],
+        returns: 'all retained requests and their current outcomes.',
+      },
+      {
+        signature: 'async disclosableWork(work: Work, signal: AbortSignal): Promise<Work>',
+        description: 'Ask the authority whether a work\'s report may reach the entrance model before it is shown there.',
+        parameters: [{ name: 'work', description: 'retained work request.' }, { name: 'signal', description: 'cancels the authority read.' }],
+        returns: 'the work unchanged, or without its artifacts and with a fixed result sentence when its Session imported owner files and the authority\'s current permissions forbid their disclosure.',
+        throws: ['If the authority cannot answer for a work that imported owner files.'],
+      },
+      {
+        signature: 'listInputs(agent: Agent): readonly AvailableInput[]',
+        description: 'Return coordinates for the latest owner message that included attachments.',
+        parameters: [{ name: 'agent', description: 'main Session Agent.' }],
+        returns: 'file and image metadata suitable for delegate_work input selection.',
+      },
+      {
+        signature: 'isOwnerOnlyDataSession(sessionId: SessionId): boolean',
+        description: 'Identify Sessions whose history may contain attachment contents or export details.',
+        parameters: [{ name: 'sessionId', description: 'inspected Session.' }],
+        returns: 'whether the Session requires an owner reader.',
+      },
+      {
+        signature: 'assertMain(agent: Agent): void',
+        description: 'Require the configured entrance.',
+        parameters: [{ name: 'agent', description: 'calling Agent.' }],
+      },
+      {
+        signature: 'async delegate( agent: Agent, key: string, prompt: string, previous: WorkId | null = null, signal?: AbortSignal, permissions?: WorkPermissions, inputs?: readonly InputCoordinates[], ): Promise<Work>',
+        description: 'Accept one request or return its prior receipt; a changed payload under the same key fails.',
+        parameters: [{ name: 'agent', description: 'main Session Agent.' }, { name: 'key', description: 'stable caller-selected idempotency key, reused after uncertain replies.' }, { name: 'prompt', description: 'complete worker instruction; parent history is not copied.' }, { name: 'previous', description: 'terminal request whose Session should continue.' }, { name: 'signal', description: 'optional cancellation of admission before the queue write begins.' }, { name: 'permissions', description: 'subset of the authority\'s current delegation ceiling; required for fresh work, and omitted by a continuation to keep its predecessor\'s grant.' }, { name: 'inputs', description: 'owner attachment coordinates for a fresh worker. A continuation inherits the same files.' }],
+        returns: 'the durable acceptance receipt, before execution finishes.',
+      },
+      {
+        signature: 'async report( agent: Agent, status: ReportStatus, result: string, artifactPaths: readonly string[] = [], signal?: AbortSignal, ): Promise<Work>',
+        description: 'Persist a worker\'s explicit result before acknowledging its report tool.',
+        parameters: [{ name: 'agent', description: 'worker whose active request owns the report.' }, { name: 'status', description: 'explicit outcome; idle never implies success.' }, { name: 'result', description: 'summary, evidence, or question returned to the main Session.' }, { name: 'artifactPaths', description: 'paths to final regular files in the worker workspace.' }, { name: 'signal', description: 'optional cancellation while awaiting witnessed artifact exports.' }],
+        returns: 'durable reported work. A completed report is recorded as `unknown` while an external request of the work has an unresolved outcome or the authority cannot be read. Imported-file completion requires a nonerror exec result observed in that work; otherwise it is recorded as failed and withheld. Observation does not verify file use or reported values.',
+      },
+      {
+        signature: 'async readArtifact(workId: WorkId, index: number, signal?: AbortSignal): Promise<{ name: string; data: Uint8Array }>',
+        description: 'Retrieve a published artifact for the authenticated owner download route.',
+        parameters: [{ name: 'workId', description: 'retained work report identity.' }, { name: 'index', description: 'zero-based artifact index in that report.' }, { name: 'signal', description: 'optional cancellation of the authority read.' }],
+        returns: 'display name and verified bytes for the original witnessed export.',
+      },
+      {
+        signature: 'async stop(agent: Agent, id: WorkId): Promise<Work>',
+        description: 'Cancel queued or running work; interrupted external effects remain inspectable.',
+        parameters: [{ name: 'agent', description: 'main Session Agent.' }, { name: 'id', description: 'request to stop.' }],
+        returns: 'durable cancellation receipt.',
+      },
+      {
+        signature: 'retry(): void',
+        description: 'Retry pending dispatch or delivery after an operator repairs a reported storage error.',
+        parameters: [],
       },
     ],
   },
@@ -694,7 +832,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Explicitly compact useful history even below automatic pressure thresholds. Implementations synchronously start an idle task before any asynchronous work, select a useful range without writing on a no-op, then append a standalone `compaction/start` before summarization. That durable marker is the compaction lock until one `compaction/end` attempt. Later waking prompts remain accepted in FIFO order and start only after the optional durability checkpoint and idle-task settlement. Context injected while the summary runs may sit between the marker pair; only the selected span must remain stable.',
         parameters: [{ name: 'agent', description: 'idle agent whose durable history should be compacted.' }, { name: 'signal', description: 'cancellation scoped to this compaction request.' }, { name: 'sourceCommandId', description: 'initiating command identity for a manual compaction.' }],
         returns: 'the compaction result, or `null` when no safe useful range exists.',
-        throws: ['{@link ManualCompactionError} for expected busy, agent-cancellation, changed-span, summarization/shrink, commit-stage, or persistence failures; an aborted request preserves its exact abort reason. Failed attempts remain visible in the log.'],
+        throws: ['{@link ManualCompactionError} for unsupported models, expected busy, agent-cancellation, changed-span, summarization/shrink, commit-stage, or persistence failures; an aborted request preserves its exact abort reason. Failed attempts remain visible in the log.'],
       },
       {
         signature: 'abstract compactRegion( start: SessionSeq, end: SessionSeq, agent: CompactionAgentContext, signal?: AbortSignal, ): Promise<CompactionResult>',
@@ -1831,6 +1969,97 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'handoffControl',
+    summary: 'Service Definition for authorizing and witnessing Assistant handoffs.',
+    description: 'Service Definition for authorizing and witnessing Assistant handoffs.',
+    methods: [
+      {
+        signature: 'abstract release(request: HandoffRequest, signal?: AbortSignal): Promise<HandoffRelease>',
+        description: 'Release the exact handoff for the Host to apply. The Host owns application and deduplication of its effects.',
+        parameters: [{ name: 'request', description: 'Host-owned key, source and target Sessions, and exact payload.' }, { name: 'signal', description: 'Cancels the Host wait. An authority release may already have committed.' }],
+        returns: 'The release identity, independent outcome receipt, and resolved grant for a delegation.',
+        throws: ['If release is denied, unavailable, or unconfirmed.'],
+      },
+      {
+        signature: 'transferFile(_proposal: FileProposal, _signal?: AbortSignal): Promise<FileTransferReceipt>',
+        description: 'Execute a witnessed file transfer under the active work grant.',
+        parameters: [{ name: '_proposal', description: 'Exact file transfer request.' }, { name: '_signal', description: 'Cancels the Host wait. A reservation may already have committed.' }],
+        returns: 'Exact transfer metadata and its independent receipt.',
+        throws: ['If the provider lacks transfers, or the authority denies or cannot confirm this transfer.'],
+      },
+      {
+        signature: 'readExportedFile(operationId: OperationId, _signal?: AbortSignal): Promise<ExportedFile>',
+        description: 'Read a verified export if its disclosure is still authorized.',
+        parameters: [{ name: 'operationId', description: 'The retained export operation.' }, { name: '_signal', description: 'Cancels the Host wait.' }],
+        returns: 'The snapshot and its witness receipt.',
+        throws: ['If the provider lacks transfers, or the snapshot is unavailable or no longer authorized.'],
+      },
+      {
+        signature: 'overview(_sessionId: SessionId, _signal?: AbortSignal, _workId?: WorkId): Promise<OperationOverview>',
+        description: 'Inspect the authority\'s grant and operation counts without dispatch or witness writes.',
+        parameters: [{ name: '_sessionId', description: 'Trusted Session selected by the Host.' }, { name: '_signal', description: 'Cancels the Host wait.' }, { name: '_workId', description: 'Limit operation counts to one assignment when supplied.' }],
+        returns: 'Current grant budget and a payload-free summary, available after expiry.',
+        throws: ['If the provider lacks status reads or the authority is unavailable.'],
+      },
+      {
+        signature: 'grantSettings(_signal?: AbortSignal): Promise<OperationGrantBudget>',
+        description: 'Read editable grant settings. The caller must authorize the owner before calling.',
+        parameters: [{ name: '_signal', description: 'Cancels the Host wait.' }],
+        returns: 'The current grant and edit revision, including after expiry.',
+        throws: ['If this provider lacks owner access or the authority is unavailable.'],
+      },
+      {
+        signature: 'updateGrant(_update: OperationGrantUpdate, _signal?: AbortSignal): Promise<OperationGrantBudget>',
+        description: 'Edit the witnessed limits through the owner channel. The caller must authorize the owner before calling.',
+        parameters: [{ name: '_update', description: 'The revision last read by the owner and the desired budget and expiry.' }, { name: '_signal', description: 'Cancels the Host wait. The caller can read the current settings to resolve an interrupted wait.' }],
+        returns: 'The effective grant settings and its edit revision.',
+        throws: ['If owner access is unavailable, the update is stale or concurrent, or the authority cannot confirm the change.'],
+      },
+      {
+        signature: 'brokerConnections(_signal?: AbortSignal): Promise<BrokerConnections>',
+        description: 'List permitted broker actions and their credential state. The caller must authorize the owner before calling.',
+        parameters: [{ name: '_signal', description: 'Cancels the Host wait.' }],
+        returns: 'Each permitted action with whether a credential is stored, never the value.',
+        throws: ['If this provider lacks owner access or the authority has no connection settings.'],
+      },
+      {
+        signature: 'setBrokerConnection(_update: BrokerConnectionUpdate, _signal?: AbortSignal): Promise<BrokerConnections>',
+        description: 'Change one connection through the owner channel: its stored bearer token, or a permitted action\'s unattended rules. The caller must authorize the owner before calling.',
+        parameters: [{ name: '_update', description: 'Target and its replacement token or `null` to remove the stored one, or an action\'s complete rule list with the grant revision last read.' }, { name: '_signal', description: 'Cancels the Host wait. The caller can read the connections to resolve an interrupted wait.' }],
+        returns: 'The connections after the change, never a credential value.',
+        throws: ['If owner access is unavailable, the action is not permitted, the token is invalid, or the revision is stale.'],
+      },
+      {
+        signature: 'businessRecords(_after?: OperationId, _signal?: AbortSignal): Promise<BusinessRecords>',
+        description: 'Read one page of business records across every Session, newest first. The caller must authorize the owner before calling.',
+        parameters: [{ name: '_after', description: 'Cursor from the preceding page when supplied.' }, { name: '_signal', description: 'Cancels the Host wait.' }],
+        returns: 'Each record\'s status and exact request body, and a cursor when older records exist.',
+        throws: ['If this provider lacks owner access or the authority is unavailable.'],
+      },
+      {
+        signature: 'resolveBusiness(_resolution: BusinessResolution, _signal?: AbortSignal): Promise<BusinessOperationStatus>',
+        description: 'Record an owner-checked business outcome. The caller must authorize the owner before calling.',
+        parameters: [{ name: '_resolution', description: 'Retained operation and the outcome the owner determined.' }, { name: '_signal', description: 'Cancels the Host wait; reread records if the reply is lost.' }],
+        returns: 'The operation with witnessed completion, or unconfirmed without a witness receipt.',
+        throws: ['If owner access is unavailable or the operation is not unresolved.'],
+      },
+      {
+        signature: 'businessOperations(_sessionId: SessionId, _signal?: AbortSignal, _after?: OperationId, _workId?: WorkId): Promise<BusinessOperations>',
+        description: 'Read sanitized business status from the authority without contacting the business service.',
+        parameters: [{ name: '_sessionId', description: 'Trusted Session selected by the Host.' }, { name: '_signal', description: 'Cancels the Host wait.' }, { name: '_after', description: 'Cursor from the preceding page when supplied.' }, { name: '_workId', description: 'Limit the page and cursor to one assignment when supplied.' }],
+        returns: 'The bounded page of dispatch outcomes and independently witnessed business status.',
+        throws: ['If the provider lacks business status reads or the authority is unavailable.'],
+      },
+      {
+        signature: 'reconcile(_sessionId: SessionId, id: OperationId, _signal?: AbortSignal, _workId?: WorkId): Promise<BusinessOperationStatus>',
+        description: 'Request a read-only business lookup or seal an existing observation.',
+        parameters: [{ name: '_sessionId', description: 'Trusted Session selected by the Host.' }, { name: 'id', description: 'Original business operation identity.' }, { name: '_signal', description: 'Cancels the Host wait. An accepted lookup can still complete.' }, { name: '_workId', description: 'Require the original operation to belong to this assignment when supplied.' }],
+        returns: 'The dispatch outcome and independently witnessed business status.',
+        throws: ['If the provider lacks reconciliation, or the lookup is unavailable or unauthorized.'],
+      },
+    ],
+  },
+  {
     key: 'headlessStartup',
     summary: 'What the runner row reads from HEADLESS_STARTUP_SERVICE.',
     description: 'What the runner row reads from HEADLESS_STARTUP_SERVICE.',
@@ -1924,6 +2153,24 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'readonly cordis: CordisRuntimeTreeReader',
         description: 'Read-only Cordis topology queries independent of CDP sessions.',
         parameters: [],
+      },
+    ],
+  },
+  {
+    key: 'isolatedExecution',
+    summary: 'Service Definition for providing isolated Session workspaces.',
+    description: 'Service Definition for providing isolated Session workspaces.',
+    methods: [
+      {
+        signature: 'abstract readonly reservedPaths: readonly string[]',
+        description: 'Local paths reserved for backend infrastructure.',
+        parameters: [],
+      },
+      {
+        signature: 'abstract open(workspaceNamespace: string): IsolatedExecutionLease',
+        description: 'Prepare a backend for the given namespace. The caller owns the lease and must dispose it even if preflight fails.',
+        parameters: [{ name: 'workspaceNamespace', description: 'stable operator-owned namespace for persistent workspaces.' }],
+        returns: 'A lease whose readiness must be confirmed before admitting operations.',
       },
     ],
   },
@@ -2366,6 +2613,96 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'operationBroker',
+    summary: 'Service Definition for preparing, dispatching, and reconciling approved business requests.',
+    description: 'Service Definition for preparing, dispatching, and reconciling approved business requests.',
+    methods: [
+      {
+        signature: 'abstract readonly fingerprint: string',
+        description: 'Stable fingerprint of the provider\'s approved deployment settings.',
+        parameters: [],
+      },
+      {
+        signature: 'abstract actions(): readonly BrokerActionDescription[]',
+        description: 'List the actions this provider accepts, without resolving credentials or contacting an endpoint.',
+        parameters: [],
+        returns: 'Every configured action in ascending action ID order.',
+      },
+      {
+        signature: 'abstract resolve(action: string, body: string, identity: BrokerRequestIdentity): PreparedBrokerRequest',
+        description: 'Prepare an immutable request for authority storage and exact review without resolving credentials. Repeated preparations with the same inputs and configuration must produce the same request.',
+        parameters: [{ name: 'action', description: 'Operator-configured action ID.' }, { name: 'body', description: 'Exact JSON text supplied by the requester.' }, { name: 'identity', description: 'Authority-supplied parent execution ID and validated proposal key.' }],
+        returns: 'The fixed target and exact outgoing body for review.',
+        throws: ['A {@link BrokerError} when the action or body is invalid.'],
+      },
+      {
+        signature: 'reviewPresentation(_spec: PreparedBrokerRequest): BrokerReviewPresentation | undefined',
+        description: 'Describe the exact request during human review without resolving credentials or contacting the endpoint.',
+        parameters: [{ name: '_spec', description: 'Stored request awaiting review.' }],
+        returns: 'An optional provider presentation alongside the exact outgoing JSON.',
+      },
+      {
+        signature: 'abstract run(spec: PreparedBrokerRequest, correlation: BrokerCorrelation, signal: AbortSignal): Promise<BrokerObservation>',
+        description: 'Send one request after the authority consumes its witnessed approval.',
+        parameters: [{ name: 'spec', description: 'Exact stored request authorized by the authority.' }, { name: 'correlation', description: 'Authority-issued identity and digest of the approved operation.' }, { name: 'signal', description: 'Cancellation for credential lookup and transport.' }],
+        returns: 'An HTTP response observation.',
+        throws: ['A sanitized {@link BrokerError} with the known dispatch state.'],
+      },
+      {
+        signature: 'abstract reconcile(spec: PreparedBrokerRequest, correlation: BrokerCorrelation, signal: AbortSignal): Promise<BrokerResolution>',
+        description: 'Look up the business status of a previously admitted operation without resending its request. Check the saved route against current configuration before lookup. Apply the current POST body size limit only when preparing or sending a POST.',
+        parameters: [{ name: 'spec', description: 'Exact stored request including its configured status endpoint.' }, { name: 'correlation', description: 'The same identity and digest used for dispatch.' }, { name: 'signal', description: 'Cancellation for credential lookup and the complete status response.' }],
+        returns: 'Confirmed pending or terminal status, with a receipt ID for a terminal status.',
+        throws: ['A sanitized {@link BrokerError} when a lookup is unavailable or cannot confirm status.'],
+      },
+    ],
+  },
+  {
+    key: 'operationBrokerMcp',
+    summary: 'Service Definition for preparing, dispatching, and reconciling approved business requests.',
+    description: 'Service Definition for preparing, dispatching, and reconciling approved business requests.',
+    methods: [
+      {
+        signature: 'abstract readonly fingerprint: string',
+        description: 'Stable fingerprint of the provider\'s approved deployment settings.',
+        parameters: [],
+      },
+      {
+        signature: 'abstract actions(): readonly BrokerActionDescription[]',
+        description: 'List the actions this provider accepts, without resolving credentials or contacting an endpoint.',
+        parameters: [],
+        returns: 'Every configured action in ascending action ID order.',
+      },
+      {
+        signature: 'abstract resolve(action: string, body: string, identity: BrokerRequestIdentity): PreparedBrokerRequest',
+        description: 'Prepare an immutable request for authority storage and exact review without resolving credentials. Repeated preparations with the same inputs and configuration must produce the same request.',
+        parameters: [{ name: 'action', description: 'Operator-configured action ID.' }, { name: 'body', description: 'Exact JSON text supplied by the requester.' }, { name: 'identity', description: 'Authority-supplied parent execution ID and validated proposal key.' }],
+        returns: 'The fixed target and exact outgoing body for review.',
+        throws: ['A {@link BrokerError} when the action or body is invalid.'],
+      },
+      {
+        signature: 'reviewPresentation(_spec: PreparedBrokerRequest): BrokerReviewPresentation | undefined',
+        description: 'Describe the exact request during human review without resolving credentials or contacting the endpoint.',
+        parameters: [{ name: '_spec', description: 'Stored request awaiting review.' }],
+        returns: 'An optional provider presentation alongside the exact outgoing JSON.',
+      },
+      {
+        signature: 'abstract run(spec: PreparedBrokerRequest, correlation: BrokerCorrelation, signal: AbortSignal): Promise<BrokerObservation>',
+        description: 'Send one request after the authority consumes its witnessed approval.',
+        parameters: [{ name: 'spec', description: 'Exact stored request authorized by the authority.' }, { name: 'correlation', description: 'Authority-issued identity and digest of the approved operation.' }, { name: 'signal', description: 'Cancellation for credential lookup and transport.' }],
+        returns: 'An HTTP response observation.',
+        throws: ['A sanitized {@link BrokerError} with the known dispatch state.'],
+      },
+      {
+        signature: 'abstract reconcile(spec: PreparedBrokerRequest, correlation: BrokerCorrelation, signal: AbortSignal): Promise<BrokerResolution>',
+        description: 'Look up the business status of a previously admitted operation without resending its request. Check the saved route against current configuration before lookup. Apply the current POST body size limit only when preparing or sending a POST.',
+        parameters: [{ name: 'spec', description: 'Exact stored request including its configured status endpoint.' }, { name: 'correlation', description: 'The same identity and digest used for dispatch.' }, { name: 'signal', description: 'Cancellation for credential lookup and the complete status response.' }],
+        returns: 'Confirmed pending or terminal status, with a receipt ID for a terminal status.',
+        throws: ['A sanitized {@link BrokerError} when a lookup is unavailable or cannot confirm status.'],
+      },
+    ],
+  },
+  {
     key: 'otel',
     summary: 'Shared transport provider.',
     description: 'Shared transport provider. Mounting creates no queue, identity, or network connection.',
@@ -2478,8 +2815,14 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Current runtime entries with persistent patch targets.',
       },
       {
+        signature: '@Remote management(): \'full\' | \'fixed\'',
+        description: 'Read whether this profile permits manager changes.',
+        parameters: [],
+        returns: 'The configured policy; fixed mode neither offers bundles nor changes profile composition.',
+      },
+      {
         signature: '@Remote listBundles(): Promise<BundleInfo[]>',
-        description: 'Read installed, installation-provided, and offline Official catalog bundles, plus selected non-bundle names. A dependency without a bundle patch is listed, as a `not-bundle` problem, only while it is selected.',
+        description: 'Read installed, installation-provided, and offline Official catalog bundles, plus selected non-bundle names. A dependency without a bundle patch is listed, as a `not-bundle` problem, only while it is selected. Fixed mode returns no bundles; already-selected bundles remain active.',
         parameters: [],
         returns: 'Package versions, manifest descriptions, the installable spec of profile dependencies, rows, optional display metadata, activation selections, whether the installation offers the bundle, and removal availability.',
       },
@@ -2715,8 +3058,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   },
   {
     key: 'remoteAccess',
-    summary: 'Registry of access policies, the Gateway\'s access decisions, list filtering, and the per-Peer access snapshot.',
-    description: 'Registry of access policies, the Gateway\'s access decisions, list filtering, and the per-Peer access snapshot. Every composition that mounts the Gateway mounts this service too.',
+    summary: 'Registry of access guards and policies, the Gateway\'s access decisions, list filtering, and the per-Peer access snapshot.',
+    description: 'Registry of access guards and policies, the Gateway\'s access decisions, list filtering, and the per-Peer access snapshot. Every composition that mounts the Gateway mounts this service too.',
     methods: [
       {
         signature: 'registerPolicy<K extends Exclude<keyof PrincipalMap, \'owner\'>>(kind: K, policy: RemoteAccessPolicy<PrincipalMap[K]>): () => void',
@@ -2726,27 +3069,33 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         throws: ['Error when `kind` already has a policy.'],
       },
       {
+        signature: 'guard(guard: RemoteAccessGuard): () => void',
+        description: 'Register a synchronous endpoint guard in the caller\'s fiber. The first refusal wins, including for the owner. A throwing guard refuses with `guard-failed` and logs its first failure until removed.',
+        parameters: [{ name: 'guard', description: 'business-owned check for Remote calls and per-item filtering.' }],
+        returns: 'disposer removing this registration.',
+      },
+      {
         signature: 'invalidate(principal?: Principal): void',
         description: 'Report that the bindings or condition answers for `principal` may have changed. Business packages call this on every grant, revocation, mode change, and expiry; open snapshots re-push, and the next failure of each policy is logged again.',
         parameters: [{ name: 'principal', description: 'affected principal; omitted for every principal.' }],
       },
       {
         signature: 'decide(request: RemoteAccessRequest<Principal>): RemoteAccessDecision',
-        description: 'Gateway-only: decide one request whose resources the Gateway resolved. The owner is allowed, and so is `remoteAccess/follow`: every Peer reads its own snapshot. Otherwise the action is allowed only when, on every listed resource, some binding of the principal\'s policy names that resource, has a role listing the action, and has no condition or a condition that allows. `bindings()` is called once per decision.',
+        description: 'Decide one request whose resources the Gateway resolved. Endpoint guards run first. The owner and `remoteAccess/follow` then qualify without policy bindings. Other requests require a matching role that allows the action on every resource. Each policy check reads `bindings()` once.',
         parameters: [{ name: 'request', description: 'the caller or recipient, the action, the resources it touches, and a call\'s arguments.' }],
-        returns: '`allow`; or `deny` with `no-allow` when the principal kind has no policy, the first refusing condition\'s reason on the first resource no binding allows, else `explain()`\'s reason, else `no-allow`; `policy-failed` when `bindings()`, a condition, or `explain()` throws, logged once per policy until the next `invalidate()`. The Gateway throws `remote-access/denied` for a denied call and drops a denied event.',
+        returns: '`allow` or a refusal. Guards supply their reason or `guard-failed` on exception. Policy refusals use the first refusing condition on the first resource without a grant, then `explain()`, then `no-allow`. Exceptions from policy callbacks produce `policy-failed`, logged once per policy until the next `invalidate()`. The Gateway throws `remote-access/denied` for a denied call and drops a denied event.',
       },
       {
         signature: 'allows(resource: RemoteAccessResource): boolean',
         description: 'Filter items inside a Remote method. The invocation is read from the Context that accessed this service, so call it as `this.ctx.remoteAccess.allows(resource)` from the Remote method. Each check reads the policy\'s bindings again, so a long-running stream sees binding changes from the next check on.',
         parameters: [{ name: 'resource', description: 'resource of one result item.' }],
-        returns: 'true for the owner and outside a Remote call; otherwise whether the invocation\'s endpoint action is allowed on `resource` without call arguments, false when the policy is absent or fails.',
+        returns: 'true outside a Remote call. Inside one, true if no endpoint guard refuses and the owner or a policy binding permits the action on `resource`. Checks omit call arguments.',
       },
       {
         signature: 'snapshotFor(principal: Principal): RemoteAccessBaseline',
         description: 'The baseline a page opens with before its snapshot stream connects; every index the webServer renders carries it under REMOTE_ACCESS_SNAPSHOT_KEY for the Peer the page speaks for.',
         parameters: [{ name: 'principal', description: 'the page\'s caller identity.' }],
-        returns: 'the owner baseline for the owner; otherwise the principal\'s current grants.',
+        returns: 'the owner baseline for the owner, or the principal\'s current policy grants.',
       },
       {
         signature: '@Remote({ mode: \'stream\' }) async *follow(signal: AbortSignal): AsyncIterable<RemoteAccessFrame>',
@@ -2837,13 +3186,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       {
         signature: 'async list(request: ScheduleListRequest = {}): Promise<ScheduleListResult>',
         description: 'Read one page of Host tasks without activating target Sessions.',
-        parameters: [{ name: 'request', description: 'Optional activity filter, page size, and offset.' }],
+        parameters: [{ name: 'request', description: 'Optional activity and destination filters, page size, and offset.' }],
         returns: 'The requested page and total matching task count.',
       },
       {
         signature: '@Remote(\'list\') async remoteList(request: ScheduleListRequest): Promise<ScheduleListResult>',
         description: 'Remote form of the shared Host-wide list.',
-        parameters: [{ name: 'request', description: 'Optional activity filter, page size, and offset.' }],
+        parameters: [{ name: 'request', description: 'Optional activity and destination filters, page size, and offset.' }],
         returns: 'The requested page and total matching task count.',
       },
       {
@@ -2855,7 +3204,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       {
         signature: '@Remote(\'view\') async view(request: ScheduleViewRequest): Promise<ScheduleViewResult>',
         description: 'Read one task without activating its target Sessions.',
-        parameters: [{ name: 'request', description: 'Task identity.' }],
+        parameters: [{ name: 'request', description: 'Task identity and optional destination filter.' }],
         returns: 'The task, or a non-mutating miss.',
       },
       {
@@ -5942,7 +6291,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ApprovalRequestEvent',
-    declaration: 'export interface ApprovalRequestEvent {\n    readonly agent: Agent;\n    readonly toolName: string;\n    readonly callId?: ToolCallId;\n    readonly reason?: string;\n    readonly displayReason?: {\n        readonly en: string;\n        readonly [locale: string]: string;\n    };\n    readonly signal?: AbortSignal;\n}',
+    declaration: 'export interface ApprovalRequestEvent {\n    readonly agent: Agent;\n    readonly toolName: string;\n    readonly callId?: ToolCallId;\n    readonly reason?: string;\n    readonly displayReason?: {\n        readonly en: string;\n        readonly [locale: string]: string;\n    };\n    readonly detail?: string;\n    readonly signal?: AbortSignal;\n}',
   },
   {
     name: 'ArchiveSessionOptions',
@@ -6033,6 +6382,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type AttachmentId = Branded<\'AttachmentId\'>;',
   },
   {
+    name: 'AuthorityStatus',
+    declaration: 'export type AuthorityStatus<T> = {\n    kind: \'available\';\n    value: T;\n} | {\n    kind: \'unavailable\';\n    code: string;\n};',
+  },
+  {
     name: 'AuthorizationEntry',
     declaration: 'export interface AuthorizationEntry {\n    key: CredentialKey;\n    label: string;\n    methods: readonly AuthorizationMethod[];\n    inFlight: boolean;\n}',
   },
@@ -6081,6 +6434,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type AuthorizationStatus = \'authorized\' | \'cancelled\';',
   },
   {
+    name: 'AvailableInput',
+    declaration: 'export type AvailableInput = z.infer<typeof availableInputSchema>;',
+  },
+  {
     name: 'BackendRegistry',
     declaration: 'export class BackendRegistry {\n    register(name: string, backend: StorageBackend): () => void;\n    get(name: string): StorageBackend;\n    names(): string[];\n}',
   },
@@ -6121,6 +6478,46 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type BrandedNumber<B extends string> = number & {\n    readonly [BRAND]: B;\n};',
   },
   {
+    name: 'BrokerActionDescription',
+    declaration: 'export interface BrokerActionDescription {\n    readonly action: BrokerActionId;\n    readonly description?: string;\n    readonly credentialRef: CredentialRef;\n    readonly returnsResponse?: boolean;\n    readonly routeDigest: string;\n}',
+  },
+  {
+    name: 'BrokerActionId',
+    declaration: 'export type BrokerActionId = Branded<\'BrokerActionId\'>;',
+  },
+  {
+    name: 'BrokerConnections',
+    declaration: 'export type BrokerConnections = z.infer<typeof brokerConnectionsSchema>;',
+  },
+  {
+    name: 'BrokerConnectionUpdate',
+    declaration: 'export type BrokerConnectionUpdate = z.infer<typeof brokerConnectionUpdateSchema>;',
+  },
+  {
+    name: 'BrokerCorrelation',
+    declaration: 'export interface BrokerCorrelation {\n    readonly operationId: Branded<\'OperationId\'>;\n    readonly payloadDigest: string;\n}',
+  },
+  {
+    name: 'BrokerObservation',
+    declaration: 'export type BrokerObservation = ({\n    readonly kind: \'http-response\';\n    readonly statusCode: number;\n} & ReturnedResponse) | ({\n    readonly kind: \'tool-result\';\n    readonly isError: boolean;\n} & ReturnedResponse);',
+  },
+  {
+    name: 'BrokerReceiptId',
+    declaration: 'export type BrokerReceiptId = Branded<\'BrokerReceiptId\'>;',
+  },
+  {
+    name: 'BrokerRequestIdentity',
+    declaration: 'export interface BrokerRequestIdentity {\n    readonly parentId: BrokerCorrelation[\'operationId\'];\n    readonly requestKey: string;\n}',
+  },
+  {
+    name: 'BrokerResolution',
+    declaration: 'export type BrokerResolution = {\n    readonly kind: \'pending\';\n} | {\n    readonly kind: \'succeeded\';\n    readonly receiptId: BrokerReceiptId;\n} | {\n    readonly kind: \'failed\';\n    readonly receiptId: BrokerReceiptId;\n};',
+  },
+  {
+    name: 'BrokerReviewPresentation',
+    declaration: 'export interface BrokerReviewPresentation {\n    readonly title: {\n        readonly en: string;\n        readonly [locale: string]: string;\n    };\n    readonly detail: string;\n}',
+  },
+  {
     name: 'BrowserUseProviderName',
     declaration: 'export type BrowserUseProviderName = Branded<\'BrowserUseProviderName\'>;',
   },
@@ -6135,6 +6532,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'BundleRowInfo',
     declaration: 'export interface BundleRowInfo {\n    rowId: string;\n    moduleName: string;\n    meta?: PluginLocalizedMeta;\n    entryId?: PluginEntryId;\n}',
+  },
+  {
+    name: 'BusinessOperations',
+    declaration: 'export type BusinessOperations = z.infer<typeof businessOperationsSchema>;',
+  },
+  {
+    name: 'BusinessOperationStatus',
+    declaration: 'export type BusinessOperationStatus = z.infer<typeof businessOperationStatusSchema>;',
+  },
+  {
+    name: 'BusinessRecords',
+    declaration: 'export type BusinessRecords = z.infer<typeof businessRecordsSchema>;',
+  },
+  {
+    name: 'BusinessResolution',
+    declaration: 'export type BusinessResolution = z.infer<typeof businessResolutionSchema>;',
   },
   {
     name: 'ButtonProps',
@@ -6351,6 +6764,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ConnectionTrustRequest',
     declaration: 'export interface ConnectionTrustRequest {\n    readonly headers: Headers | Readonly<Record<string, string | readonly string[] | undefined>>;\n}',
+  },
+  {
+    name: 'ContainerId',
+    declaration: 'export type ContainerId = Branded<\'DockerContainerId\'>;',
   },
   {
     name: 'ContentBlockMap',
@@ -6713,6 +7130,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EveryScheduleRecord {\n    readonly id: ScheduleId;\n    readonly kind: \'every\';\n    readonly title: string;\n    readonly prompt: string;\n    readonly everySeconds: number;\n    readonly scheduledAt: string;\n}',
   },
   {
+    name: 'ExecutionBroker',
+    declaration: 'export type ExecutionBroker = (request: unknown, signal: AbortSignal) => Promise<unknown>;',
+  },
+  {
+    name: 'ExecutionObservation',
+    declaration: 'export interface ExecutionObservation {\n    exitCode: number;\n    stdout: string;\n    stderr: string;\n    stdoutTruncated: boolean;\n    stderrTruncated: boolean;\n    containerId: ContainerId;\n    stopped: true;\n}',
+  },
+  {
+    name: 'ExportedFile',
+    declaration: 'export type ExportedFile = z.infer<typeof exportedFileSchema>;',
+  },
+  {
     name: 'FeedbackCategory',
     declaration: 'export type FeedbackCategory = \'task-result\' | \'instruction-following\' | \'product-interaction\' | \'service-stability\' | \'resource-cost\' | \'security-privacy-permission\' | \'other\';',
   },
@@ -6737,8 +7166,20 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface FileLocation {\n    path: string;\n    line?: number;\n}',
   },
   {
+    name: 'FileOutcome',
+    declaration: 'export type FileOutcome = z.infer<typeof fileImportedOutcomeSchema | typeof fileExportedOutcomeSchema>;',
+  },
+  {
+    name: 'FileProposal',
+    declaration: 'export type FileProposal = z.infer<typeof fileProposalSchema>;',
+  },
+  {
     name: 'FileReferenceCandidate',
     declaration: 'export interface FileReferenceCandidate {\n    path: string;\n    kind: \'file\' | \'directory\';\n}',
+  },
+  {
+    name: 'FileTransferReceipt',
+    declaration: 'export interface FileTransferReceipt {\n    readonly operationId: OperationId;\n    readonly outcome: FileOutcome;\n    readonly receipt: z.infer<typeof receiptSchema>;\n}',
   },
   {
     name: 'FileUploadReceiptId',
@@ -7109,6 +7550,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface GrantRecord {\n    readonly kind: \'grant\';\n    readonly payload: unknown;\n}',
   },
   {
+    name: 'HandoffRelease',
+    declaration: 'export interface HandoffRelease {\n    readonly operationId: OperationId;\n    readonly receipt: {\n        readonly id: string;\n        readonly digest: string;\n    };\n    readonly work?: WorkGrant;\n}',
+  },
+  {
+    name: 'HandoffRequest',
+    declaration: 'export type HandoffRequest = HandoffPayload & ({\n    readonly kind: \'delegation\';\n    readonly delegation: WorkDelegation;\n} | {\n    readonly kind: \'delivery\';\n});',
+  },
+  {
     name: 'HarnessError',
     declaration: 'export class HarnessError extends Error {\n    readonly code: string;\n    constructor(message: string, code: string, options?: ErrorOptions);\n}',
   },
@@ -7185,6 +7634,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type IndexInjectionPlacement = \'head\' | \'body\';',
   },
   {
+    name: 'InputCoordinates',
+    declaration: 'export type InputCoordinates = z.infer<typeof inputCoordinatesSchema>;',
+  },
+  {
     name: 'InspectOptions',
     declaration: 'export interface InspectOptions {\n    readonly registry?: Registry;\n}',
   },
@@ -7227,6 +7680,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'InvokeRemoteRequest',
     declaration: 'export interface InvokeRemoteRequest {\n    readonly namespace: string;\n    readonly method: string;\n    readonly args: Readonly<Record<string, unknown>>;\n    readonly uplink?: AsyncIterable<unknown>;\n    readonly uplinkWindow?: RemoteUplinkWindow | undefined;\n    readonly peer: PeerScope;\n    readonly signal?: AbortSignal;\n}',
+  },
+  {
+    name: 'IsolatedExecutionLease',
+    declaration: 'export interface IsolatedExecutionLease {\n    readonly ready: Promise<IsolatedExecutionPolicy>;\n    run(session: SessionId, command: string, signal: AbortSignal, broker?: ExecutionBroker): Promise<ExecutionObservation>;\n    transfer?(session: SessionId, request: WorkspaceTransferRequest, signal: AbortSignal): Promise<WorkspaceTransferResult>;\n    dispose(): Promise<void>;\n}',
+  },
+  {
+    name: 'IsolatedExecutionPolicy',
+    declaration: 'export interface IsolatedExecutionPolicy {\n    readonly fingerprint: string;\n    readonly maxCommandBytes: number;\n    readonly maxOutputBytes: number;\n    readonly supportsBroker: boolean;\n}',
   },
   {
     name: 'JobAppendOptions',
@@ -7466,7 +7927,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmResolvedModelInfo',
-    declaration: 'export interface LlmResolvedModelInfo extends LlmModelInfo {\n    context?: LlmModelContext;\n    defaultMaxTokens?: number;\n    reasoning?: LlmModelReasoningInfo;\n    systemPromptUpdate?: SystemPromptUpdate;\n    toolUpdate?: ToolUpdate;\n}',
+    declaration: 'export interface LlmResolvedModelInfo extends LlmModelInfo {\n    compaction?: \'unsupported\';\n    context?: LlmModelContext;\n    defaultMaxTokens?: number;\n    reasoning?: LlmModelReasoningInfo;\n    systemPromptUpdate?: SystemPromptUpdate;\n    toolUpdate?: ToolUpdate;\n}',
   },
   {
     name: 'LlmRuntime',
@@ -7526,7 +7987,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ManagementError',
-    declaration: 'export interface ManagementError {\n    code: ReadOnlyReason | \'unknown-plugin\' | \'invalid-spec\' | \'already-installed\' | \'ambiguous-install\' | \'not-bundle\' | \'not-removable\' | \'stop-profile\' | \'bundle-in-use\' | \'stale-approval\' | \'incompatible-version\' | \'unsupported-platform\' | \'unexpected-package\' | \'operation-error\';\n    diagnostic?: string;\n    incompatible?: IncompatiblePlugin[];\n}',
+    declaration: 'export interface ManagementError {\n    code: ReadOnlyReason | \'management-fixed\' | \'unknown-plugin\' | \'invalid-spec\' | \'already-installed\' | \'ambiguous-install\' | \'not-bundle\' | \'not-removable\' | \'stop-profile\' | \'bundle-in-use\' | \'stale-approval\' | \'incompatible-version\' | \'unsupported-platform\' | \'unexpected-package\' | \'operation-error\';\n    diagnostic?: string;\n    incompatible?: IncompatiblePlugin[];\n}',
   },
   {
     name: 'ManualCompactAgentContext',
@@ -7929,6 +8390,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type OneShotScheduleRecord = AfterScheduleRecord | AtScheduleRecord;',
   },
   {
+    name: 'OperationBudget',
+    declaration: 'export interface OperationBudget extends AuthoritySummary {\n    readonly expiresAt: number;\n    readonly expired: boolean;\n    readonly maxOperations: number;\n    readonly reserved: number;\n    readonly remaining: number;\n}',
+  },
+  {
+    name: 'OperationGrantBudget',
+    declaration: 'export type OperationGrantBudget = z.infer<typeof operationGrantBudgetSchema>;',
+  },
+  {
+    name: 'OperationGrantUpdate',
+    declaration: 'export type OperationGrantUpdate = z.infer<typeof operationGrantUpdateSchema>;',
+  },
+  {
+    name: 'OperationOverview',
+    declaration: 'export type OperationOverview = z.infer<typeof operationOverviewSchema>;',
+  },
+  {
     name: 'OptionalSessionSeq',
     declaration: 'export type OptionalSessionSeq = SessionSeq | null;',
   },
@@ -8131,6 +8608,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PreparedAdapterCall',
     declaration: 'export interface PreparedAdapterCall {\n    readonly model: LlmResolvedModelInfo;\n    stream(options: GenerateOptions): AsyncIterable<StreamChunk>;\n}',
+  },
+  {
+    name: 'PreparedBrokerRequest',
+    declaration: 'export interface PreparedBrokerRequest {\n    readonly action: BrokerActionId;\n    readonly method: \'POST\';\n    readonly endpoint: string;\n    readonly tool?: string;\n    readonly reconciliationEndpoint?: string;\n    readonly credentialRef: CredentialRef;\n    readonly body: string;\n}',
   },
   {
     name: 'PreparedDeepSeekLlmApiExtension',
@@ -8417,6 +8898,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface RemoteAccessGrant {\n    readonly resource: RemoteAccessResource;\n    readonly actions: readonly string[];\n}',
   },
   {
+    name: 'RemoteAccessGuard',
+    declaration: 'export type RemoteAccessGuard = (request: RemoteAccessRequest<Principal>) => string | undefined;',
+  },
+  {
     name: 'RemoteAccessPolicy',
     declaration: 'export interface RemoteAccessPolicy<P extends Principal> {\n    bindings(principal: P): readonly RemoteAccessBinding[];\n    explain?(request: RemoteAccessRequest<P>): string | undefined;\n}',
   },
@@ -8475,6 +8960,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ReplayEnvelope',
     declaration: 'export interface ReplayEnvelope {\n    response: unknown;\n    blocks?: readonly unknown[];\n}',
+  },
+  {
+    name: 'ReportStatus',
+    declaration: 'export type ReportStatus = \'completed\' | \'needs_input\' | \'failed\';',
   },
   {
     name: 'RequestContext',
@@ -8670,7 +9159,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ScheduleListRequest',
-    declaration: 'export interface ScheduleListRequest {\n    readonly active?: boolean;\n    readonly limit?: number;\n    readonly offset?: number;\n}',
+    declaration: 'export interface ScheduleListRequest {\n    readonly active?: boolean;\n    readonly targetSessionId?: SessionId;\n    readonly limit?: number;\n    readonly offset?: number;\n}',
   },
   {
     name: 'ScheduleListResult',
@@ -8714,7 +9203,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ScheduleViewRequest',
-    declaration: 'export interface ScheduleViewRequest {\n    readonly id: ScheduleId;\n}',
+    declaration: 'export interface ScheduleViewRequest {\n    readonly id: ScheduleId;\n    readonly targetSessionId?: SessionId;\n}',
   },
   {
     name: 'ScheduleViewResult',
@@ -10641,6 +11130,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface WeeklyScheduleRecord {\n    readonly id: ScheduleId;\n    readonly kind: \'weekly\';\n    readonly title: string;\n    readonly prompt: string;\n    readonly time: string;\n    readonly timeZone: string;\n    readonly weekdays: number[];\n    readonly scheduledAt: string;\n}',
   },
   {
+    name: 'Work',
+    declaration: 'export type Work = Readonly<z.infer<typeof workSchema>>;',
+  },
+  {
+    name: 'WorkDelegation',
+    declaration: 'export type WorkDelegation = z.infer<typeof workDelegationSchema>;',
+  },
+  {
     name: 'WorkflowAgentEndInfo',
     declaration: 'export interface WorkflowAgentEndInfo extends WorkflowAgentInfo {\n    outcome: WorkflowAgentOutcome;\n}',
   },
@@ -10687,6 +11184,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkflowStopReason',
     declaration: 'export type WorkflowStopReason = \'completed\' | \'cancelled\' | \'error\';',
+  },
+  {
+    name: 'WorkGrant',
+    declaration: 'export type WorkGrant = z.infer<typeof workGrantSchema>;',
+  },
+  {
+    name: 'WorkPermissions',
+    declaration: 'export type WorkPermissions = z.infer<typeof workPermissionsSchema>;',
+  },
+  {
+    name: 'WorkPhase',
+    declaration: 'export type WorkPhase = (typeof workPhases)[number];',
   },
   {
     name: 'Workspace',
@@ -10825,6 +11334,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface WorkspaceRenameRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly title: string;\n}',
   },
   {
+    name: 'WorkspaceTransferRequest',
+    declaration: 'export type WorkspaceTransferRequest = {\n    readonly kind: \'import\';\n    readonly path: string;\n    readonly data: Uint8Array;\n    readonly maxBytes: number;\n} | {\n    readonly kind: \'export\';\n    readonly path: string;\n    readonly maxBytes: number;\n};',
+  },
+  {
+    name: 'WorkspaceTransferResult',
+    declaration: 'export type WorkspaceTransferResult = {\n    readonly kind: \'imported\';\n    readonly bytes: number;\n    readonly digest: string;\n} | {\n    readonly kind: \'exported\';\n    readonly bytes: number;\n    readonly digest: string;\n    readonly data: Uint8Array;\n};',
+  },
+  {
     name: 'WorkspaceUnarchiveSessionRequest',
     declaration: 'export interface WorkspaceUnarchiveSessionRequest {\n    readonly sessionId: SessionId;\n}',
   },
@@ -10839,6 +11356,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkspaceView',
     declaration: 'export interface WorkspaceView {\n    readonly workspaceId: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly sessionIds: readonly SessionId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
+  },
+  {
+    name: 'WorkStatusSnapshot',
+    declaration: 'export interface WorkStatusSnapshot {\n    readonly refreshMs: number;\n    readonly authority: AuthorityStatus<OperationBudget>;\n    readonly work: readonly WorkStatus[];\n}',
   },
   {
     name: 'WorktreeCleanup',

@@ -3,17 +3,20 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write SAFETY.md
 /safety:
-  en: a374f70c56b3f221
-  zh: a07f7a9ba9af40fc
+  en: 91b441266822d8c0
+  zh: 469b8386f7dd4822
 /safety/experimental-status:
-  en: 39a995a6c819f73e
-  zh: e577df19392736ac
-/safety/sandbox-limitations:
-  en: a2b6cf1311f3abb6
-  zh: c3694663312f4d6c
-/safety/responsible-use:
-  en: ca3e9da7c0b360fe
-  zh: c0a6891a197d48cd
+  en: 13de283e10731074
+  zh: b507b239d3551df1
+/safety/threat-model:
+  en: 5a354fbcaef41153
+  zh: f4577594ef6595e4
+/safety/approval-recovery-and-completion:
+  en: 705d65da0e92dac4
+  zh: 20ffd32f5dc83acd
+/safety/local-operation-and-reports:
+  en: 30bb73cc029d479c
+  zh: 498e048136420e37
 /safety/no-warranty-or-liability:
-  en: 71a2989f530f2018
-  zh: e90e55f11068a91f
+  en: d5a77c333c722fa3
+  zh: 7f35ff07991b37ae

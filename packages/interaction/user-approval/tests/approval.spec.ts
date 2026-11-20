@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -6,6 +9,7 @@ import { carrierKeyOf, createScope } from '@deepseek-ai/dsh-scope'
 import type { Scope } from '@deepseek-ai/dsh-scope'
 import SessionStore, { Session, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import * as JsonlPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ApprovalService, { ApprovalOutcome, ApprovalRequest, setApprovalPolicy } from '@deepseek-ai/dsh-user-approval'
@@ -46,6 +50,130 @@ async function mounted(): Promise<Context> {
 function requestOf(agent: Agent, overrides: Partial<ApprovalRequest> = {}): ApprovalRequest {
   return { agent, toolName: 'echo', ...overrides }
 }
+
+describe('ApprovalService.requestBackground', () => {
+  it('flushes the idle ask before prompting and preserves the decision across reopen', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-background-approval-'))
+    onTestFinished(() => rm(root, { recursive: true, force: true }))
+    const ctx = await mounted()
+    await ctx.plugin(JsonlPersistence, { root, compression: 'none' })
+    const { agent } = fakeAgent(ctx, [])
+    const session = agent.session
+    const writer = await ctx.sessionPersistence.create(session.header)
+    const requested = Promise.withResolvers<ApprovalRequest>()
+    const answer = Promise.withResolvers<ApprovalOutcome>()
+    onTestFinished(() => { answer.resolve('cancelled') })
+    ctx.on('approval/request', (req) => {
+      requested.resolve(req)
+      return answer.promise
+    })
+
+    const detail = 'pwd\n  ls -a'
+    const reason = `operation-1\n${detail}`
+    const request = requestOf(agent, { toolName: 'exec', reason, detail })
+    const outcome = ctx.approval.requestBackground(request)
+    expect(await Promise.race([requested.promise, outcome])).toBe(request)
+    const beforeAnswer = await writer.read()
+    expect(beforeAnswer.events).toMatchObject([{ type: 'approval/asked', data: { toolName: 'exec', reason } }])
+
+    answer.resolve('allowed-once')
+    await expect(outcome).resolves.toBe('allowed-once')
+    const persisted = (await writer.read()).events
+    expect(persisted).toMatchObject([
+      { type: 'approval/asked', data: { toolName: 'exec', reason } },
+      { type: 'approval/decided', data: { outcome: 'allowed-once' } },
+    ])
+    await writer.close()
+    await ctx.fiber.dispose()
+
+    const reopened = await context()
+    await reopened.plugin(JsonlPersistence, { root, compression: 'none' })
+    const reader = await reopened.sessionPersistence.open(session.id, 'read')
+    try {
+      expect((await reader.read()).events).toEqual(persisted)
+    } finally {
+      await reader.close()
+    }
+  })
+
+  it.each([
+    { answer: 'rejected', policy: 'ask', outcome: 'rejected', called: 1 },
+    { answer: undefined, policy: 'ask', outcome: 'unavailable', called: 0 },
+    { answer: 'allowed-once', policy: 'never', outcome: 'rejected', called: 0 },
+  ] as const)('records $outcome with $policy policy and answer $answer', async ({ answer, policy, outcome, called }) => {
+    const ctx = await mounted()
+    const { agent, appended } = fakeAgent(ctx, [])
+    setApprovalPolicy(agent.session, policy)
+    const checkpoint = vi.fn<() => void>()
+    ctx.on('session/flush', checkpoint)
+    const consulted = vi.fn(() => Promise.resolve<ApprovalOutcome>(answer ?? 'unavailable'))
+    if (answer !== undefined) ctx.on('approval/request', consulted)
+
+    await expect(ctx.approval.requestBackground(requestOf(agent))).resolves.toBe(outcome)
+    expect(consulted).toHaveBeenCalledTimes(called)
+    expect(checkpoint).toHaveBeenCalledTimes(2)
+    expect(appended[1]?.data).toEqual({ id: appended[0]?.data['id'], outcome })
+  })
+
+  it('records cancellation and ignores a late grant', async () => {
+    const ctx = await mounted()
+    const { agent, appended } = fakeAgent(ctx, [])
+    ctx.on('session/flush', vi.fn<() => void>())
+    const signal = new AbortController()
+    const waiting = Promise.withResolvers<undefined>()
+    const answer = Promise.withResolvers<ApprovalOutcome>()
+    ctx.on('approval/request', () => {
+      waiting.resolve(undefined)
+      return answer.promise
+    })
+    const outcome = ctx.approval.requestBackground(requestOf(agent, { signal: signal.signal }))
+    await Promise.race([waiting.promise, outcome])
+    signal.abort()
+    await expect(outcome).resolves.toBe('cancelled')
+    answer.resolve('allowed-once')
+    expect(appended).toHaveLength(2)
+    expect(appended[1]?.data).toEqual({ id: appended[0]?.data['id'], outcome: 'cancelled' })
+  })
+
+  it('refuses a background request without the sessions service before auditing', async () => {
+    const store = await context()
+    const ctx = new Context()
+    onTestFinished(() => ctx.fiber.dispose())
+    await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(ApprovalService)
+    const { agent, appended } = fakeAgent(store, [])
+    const answer = vi.fn(() => Promise.resolve<ApprovalOutcome>('allowed-once'))
+    ctx.on('approval/request', answer)
+    await expect(ctx.approval.requestBackground(requestOf(agent))).rejects.toThrow('requires the sessions service')
+    expect(answer).not.toHaveBeenCalled()
+    expect(appended).toEqual([])
+  })
+
+  it('refuses a background request without a Session checkpoint listener', async () => {
+    const ctx = await mounted()
+    const { agent } = fakeAgent(ctx, [])
+    const answer = vi.fn(() => Promise.resolve<ApprovalOutcome>('allowed-once'))
+    ctx.on('approval/request', answer)
+    await expect(ctx.approval.requestBackground(requestOf(agent))).rejects.toThrow('Session checkpoint listener')
+    expect(answer).not.toHaveBeenCalled()
+  })
+
+  it.each([1, 2])('withholds a grant when checkpoint %s fails', async (failureAt) => {
+    const ctx = await mounted()
+    const { agent } = fakeAgent(ctx, [])
+    const failure = new Error('checkpoint failure')
+    let checkpoints = 0
+    ctx.on('session/flush', () => {
+      checkpoints++
+      if (checkpoints === failureAt) throw failure
+    })
+    const answer = vi.fn(() => Promise.resolve<ApprovalOutcome>('allowed-once'))
+    ctx.on('approval/request', answer)
+
+    await expect(ctx.approval.requestBackground(requestOf(agent))).rejects.toBe(failure)
+    expect(answer).toHaveBeenCalledTimes(failureAt - 1)
+  })
+})
 
 describe('ApprovalService.request', () => {
   it('throws before appending anything when no turn has ever opened (idle ask)', async () => {

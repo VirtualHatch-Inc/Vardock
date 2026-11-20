@@ -2,13 +2,13 @@
 
 English | [中文](development.zh.md)
 
-The setup tutorial takes a new contributor from prerequisites to a checked checkout. The contributor reference that follows covers repository layout, daily workflow, and CI organization. Design rationale and implementation details belong to the linked Agent Notes and scripts.
+The setup tutorial takes a new contributor from prerequisites to a checked checkout. The contributor reference that follows covers repository layout, daily workflow, and gate aggregates. Design rationale and implementation details belong to the linked Agent Notes and scripts.
 
 ## Setup tutorial
 
 ### Prerequisites
 
-- Node.js 24.9 or newer. CI covers 24.9, the latest 24, and 26; see the [Node engine floor Agent Note](../.agents/notes/implemented/process/2026-10-15-node-24-runtime-floor.md).
+- Node.js 24.9 or newer; see the [Node engine floor Agent Note](../.agents/notes/implemented/process/2026-10-15-node-24-runtime-floor.md).
 - Node.js TypeScript type stripping enabled. The repository build scripts load `tsdown.config.ts` with tsdown's native config loader, so they fail when `--no-experimental-strip-types` is in `NODE_OPTIONS` or the Node.js build lacks TypeScript support; `pnpm run build` checks this first and names the cause.
 - Corepack-enabled pnpm. The repo pins `pnpm@11.28.5` in `package.json`; run `corepack enable` if `pnpm --version` does not resolve through Corepack.
 - Git 2.26 or newer; hook setup enables Git's worktree-specific configuration extension.
@@ -21,6 +21,8 @@ On Windows, you can develop with native tools or use WSL 2 for a Linux environme
 Keep the checkout, installed dependencies, and toolchain in the same operating system environment. For WSL 2, store the checkout in the Linux filesystem; for native Windows tools, use the Windows filesystem. Accessing files across the two filesystems adds overhead to I/O-intensive operations such as Git, dependency installation, and builds. See Microsoft's [file storage and performance guidance](https://learn.microsoft.com/en-us/windows/wsl/filesystems#file-storage-and-performance-across-file-systems).
 
 Install dependencies separately in each environment because native binaries and links can differ between operating systems. Test results apply to the environment where the tests ran; Windows-specific behavior still needs native Windows validation.
+
+<a id="first-time-setup"></a>
 
 ### First-time setup
 
@@ -66,7 +68,7 @@ The repository uses isolated Host and Client aggregates. An ordinary package is 
 | `tsconfig.base.json` | Shared compilerOptions and the source `paths` map. Also the resolution facade the vitest configs point vite-tsconfig-paths at: it has no `include`, so its `paths` apply to every importer. | No |
 | `tsconfig.base.client.json` | Browser compiler settings (`jsx`, DOM libs, `types: []`) extended by the Client aggregate and every `packages/client/*` package. | No |
 
-Host and Client aggregate type checks run with an 8 GiB Node old-space limit. This is a per-compiler limit; concurrent build steps need additional memory. `pnpm run build:official --serial` prevents build steps from overlapping, even with `DSH_GATE_CONCURRENCY` set; the DSH publication workflow uses this option.
+Host and Client aggregate type checks run with an 8 GiB Node old-space limit. This is a per-compiler limit; concurrent build steps need additional memory. `pnpm run build:official --serial` prevents build steps from overlapping, even with `DSH_GATE_CONCURRENCY` set.
 
 Host and Client stay two aggregate programs because both sides declaration-merge the cordis `Context` interface under the same keys with different services; one program seeing both merges reports a collision. The collision exists only inside a `ts.Program` — module resolution never triggers it — which is why the solution may reference both aggregates and one paths facade may span both sides. Three disciplines follow:
 
@@ -98,17 +100,17 @@ Choose the command by what the change needs:
 | Iterating on package sources and needing runnable artifacts | `pnpm run build:artifacts`; `dev:web` and `dev:desktop` run it before launching |
 | Type-checking tests, scripts, benchmarks, or website code | `pnpm run build:check` after the latest `build:artifacts`; rerun `build:artifacts` first when package sources changed |
 | Before declaring TypeScript work complete | `pnpm run build:check` after the latest `build:artifacts`, or `pnpm run build` |
-| Complete verification, as the required CI build lanes run it | `pnpm run build` |
+| Complete verification | `pnpm run build` |
 | Type checks without the Web and Desktop artifacts | `pnpm run typecheck` |
 | Lint or documentation code-block checks | `pnpm run lint` or `pnpm run doc-typecheck`; each prepares `host-contracts` itself |
 
-PR artifact builders run `build:artifacts`; required Linux and Windows normal builds and public `typecheck` also check the repository-wide test and script programs. CI benchmark preparation additionally uses `--noCheck` for its disposable library outputs, relying on those required builds for diagnostics; other artifact builders keep package checking ([rationale](../.agents/notes/implemented/process/2026-10-05-pr-artifact-typechecks.md)).
+`build:artifacts` emits artifacts without the repository-wide test and script programs; `build`, `build:check`, and `typecheck` also check those programs. The memory-pressure benchmark's artifact preparation additionally uses `--noCheck` for its disposable library outputs, relying on those checking builds for diagnostics; other artifact builders keep package checking ([rationale](../.agents/notes/implemented/process/2026-10-05-pr-artifact-typechecks.md)).
 
 Both tsdown passes match `vendor/*`, `packages/*/*`, and `apps/cli`; the Host pass also matches `apps/desktop-host`. They neither scan build artifacts to discover Client packages nor maintain a Host/Client package filter list. Package-local tsdown configs select entries for the current phase through `DSH_BUILD_FACE`: an ordinary Client plugin produces both its Node loader and browser bundle during the Client phase; `api-remotes` uses `hostPhase: true` to produce its Host entry early and only its browser bundle during the Client phase. Tsdown consumes only the JavaScript emitted to `lib/types` by the preceding tsc phase. Tsdown builds the matched workspace members concurrently, so `apps/desktop`, whose main bundle inlines workspace devDependencies from their `lib/` output, bundles in its own step after the Host pass ([Desktop README](../apps/desktop/README.md#bundled-workspace-dependencies)).
 
 Typert analyzes Host types through `tsconfig.host.json` and generates Host reflection and Host-for-Client Remote declarations before package compilation. The source-only [`generate-typert.ts`](../scripts/generate-typert.ts) pass rejects workspace imports that require built output, including metadata dependencies that return to generated declarations. Host tsdown lowers source decorators without generating metadata again; Client tsdown also consumes the existing metadata. `pnpm run typecheck` generates metadata, compiles Host and Client packages in reference order, and checks each aggregate with `tsc -b` after its package compilation. It skips the native addon, bundles, Web, and the client build record. `lint`, `lint:fix`, and `doc-typecheck` prepare metadata and Host package declarations through `compile-referenced-projects.ts host-contracts`; generation failure stops dependent compilation. These declaration-only commands do not update runtime bundles: run `build:artifacts` before launching or testing built output.
 
-`pnpm run build` and `build:artifacts` embed the root package version, the seven-character source commit, and a dirty marker when Git reports local changes; they also inherit other caller-supplied `DSH_CLIENT_*` values. `pnpm run build:official` is the cross-platform local equivalent of the CI and release artifact build and omits the local dirty marker. Each successful `build` or `build:artifacts` writes a gitignored record that binds the exact public values to the Vite output and dynamic client bundles; release packing and built Web tests reject a missing record or artifacts changed by a later partial build. `pnpm run dev:web` runs `build:artifacts` first (`--skip-build` reuses an existing artifact tree instead), then samples the current version and Git state once and shares that environment across every watcher stage for the session; it does not validate the complete-build record because the watcher stages rewrite its recorded artifacts.
+`pnpm run build` and `build:artifacts` embed the root package version, the seven-character source commit, and a dirty marker when Git reports local changes; they also inherit other caller-supplied `DSH_CLIENT_*` values. `pnpm run build:official` is the cross-platform local equivalent of the release artifact build and omits the local dirty marker. Each successful `build` or `build:artifacts` writes a gitignored record that binds the exact public values to the Vite output and dynamic client bundles; release packing and built Web tests reject a missing record or artifacts changed by a later partial build. `pnpm run dev:web` runs `build:artifacts` first (`--skip-build` reuses an existing artifact tree instead), then samples the current version and Git state once and shares that environment across every watcher stage for the session; it does not validate the complete-build record because the watcher stages rewrite its recorded artifacts.
 
 `pnpm run build --profile local` explicitly selects local client branding, preserves repository version, commit and dirty metadata, and discards inherited client title and other public overrides. `build:official` retains its exact official values. [Desktop packaging](../apps/desktop/packaging/README.md#configuration-and-local-builds) selects the profile for each signing mode.
 
@@ -149,19 +151,17 @@ The vendor manifest guard checks that changes under `vendor/*/src` are staged wi
 
 The pi-ai check regenerates expected metadata in memory. It rejects stale data without rewriting or staging files. After a pi-ai dependency or generator change, follow the package's [provider metadata update steps](../packages/llm/llm-pi-ai/README.md#generated-provider-metadata).
 
-Apart from the scoped pairing and provider metadata checks, the hooks intentionally do not run tests, snapshots, documentation checks, builds, or hygiene. Contributors run the [checks relevant to the changed behavior](../AGENTS.md#run-relevant-checks-locally) once; CI owns exhaustive coverage, built-artifact smokes, and the Node 24.9, latest 24, and 26 compatibility matrix.
+Apart from the scoped pairing and provider metadata checks, the hooks intentionally do not run tests, snapshots, documentation checks, builds, or hygiene. Contributors run the [checks relevant to the changed behavior](../AGENTS.md#run-relevant-checks-locally) once.
 
 Contributors can opt into the comprehensive local gate set with `pnpm run check:all`. The command is independent of the Git hooks and is not an agent instruction.
 
-Outside CI (`CI` other than `true`), default worker counts follow the [local worker budget](../scripts/parallelism.ts): 12 for gate schedulers, `build`, `typecheck`, Oxlint, and publint, and 48 for Vitest forks and local coverage. `doc-sync`, `test:docs`, `hygiene`, and `check:all` run at most 8 gates at once, in CI as well. `os.availableParallelism()` reports host CPUs rather than a container's CPU quota, so uncapped defaults oversubscribe shared hosts. CI keeps the runner's CPU count. `DSH_GATE_CONCURRENCY`, `DSH_OXLINT_THREADS`, `DSH_COVERAGE_MAX_WORKERS`, and Vitest `--maxWorkers` override the defaults.
+Default worker counts follow the [local worker budget](../scripts/parallelism.ts): 12 for gate schedulers, `build`, `typecheck`, Oxlint, and publint, and 48 for Vitest forks and coverage. `doc-sync`, `test:docs`, `hygiene`, and `check:all` run at most 8 gates at once. `os.availableParallelism()` reports host CPUs rather than a container's CPU quota, so uncapped defaults oversubscribe shared hosts. `DSH_GATE_CONCURRENCY`, `DSH_OXLINT_THREADS`, `DSH_COVERAGE_MAX_WORKERS`, and Vitest `--maxWorkers` override the defaults.
 
 `run-gates` gives the CLI help generator one child at a time; direct `pnpm run verify-cli-help` uses the standalone worker budget. `DSH_CLI_HELP_CONCURRENCY` overrides that child limit with a positive integer validated before startup. Each invocation retains its private `DSH_HOME` and `DSH_AGENTS_HOME` and 30-second deadline.
 
-### CI gates
+### Gate aggregates
 
-The keyless [CI workflow](../.github/workflows/ci.yml) groups independent gates into broad lanes and runs a smaller compatibility signal across supported Node versions. Artifact consumers wait for one build within their lane. Coverage partitions reuse file timings scoped to their platform and runner pool to balance work within the configured worker limit. Native Windows lanes run in the separate [CI Windows workflow](../.github/workflows/ci-windows.yml) and Python checks in the separate [CI Python workflow](../.github/workflows/ci-python.yml), each of which can be re-run independently. Required benchmarks run separately on standard GitHub-hosted Linux; the [benchmark runner reference](../benchmarks/AGENTS.md) owns routing and the job timeout. The separate real-API workflow runs `pnpm run test:e2e` with its configured worker bound. See [scripts/run-gates.ts](../scripts/run-gates.ts) and the workflow files for the current gate and job inventory.
-
-The credential-free dsh dependency-layout and dsh/vendor pack rehearsals use the existing Linux self-hosted pool only when `DSH_CI_FAILOVER_LINUX=selfhosted` and the event is a trusted master push or same-repository, non-fork, non-Dependabot pull request. All other cases, including manual dispatch, use `ubuntu-24.94`; manual publication stays hosted. See the [release rehearsal runner reference](../.agents/notes/implemented/process/2026-07-26-ci-failover-runbook.md) for persistent-store isolation and fallback limits.
+`hygiene`, `doc-sync`, and `test:docs` run subsets of the `check:all` gates, and `pnpm run check:node-compat` runs a smaller compatibility signal on the current Node version. Gates that read built artifacts wait for the one build in their aggregate. The real-API suite runs with `pnpm run test:e2e`. See [scripts/run-gates.ts](../scripts/run-gates.ts) for the current gate inventory.
 
 ### Daily commands
 
@@ -186,6 +186,8 @@ The PTC mode demo runs the same headless profile with code presentation enabled:
 ```sh
 pnpm run demo:ptc -- "summarize this workspace"
 ```
+
+<a id="application-commands"></a>
 
 ### Application commands
 

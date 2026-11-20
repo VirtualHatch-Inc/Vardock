@@ -13,6 +13,8 @@ export function ApprovalPanel(props: ApprovalComposerProps) {
     requestKey: approval.key,
     title: reason ?? props.t('escalation', { toolName: approval.toolName }),
     ...(approval.callId === undefined ? {} : { callId: approval.callId }),
+    ...(approval.detail === undefined ? {} : { detail: approval.detail }),
+    ...(approval.displayReason === undefined || approval.reason === undefined ? {} : { auditReason: approval.reason }),
     canAnswer: () => approval.answerable,
     onAllow: () => approval.answer('allowed-once'),
     onReject: () => approval.answer('rejected'),

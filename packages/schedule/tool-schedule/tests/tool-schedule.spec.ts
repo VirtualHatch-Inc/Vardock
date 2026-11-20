@@ -556,6 +556,25 @@ describe('Schedule model tools', () => {
     })
   })
 
+  it('reads and changes only tasks that deliver to the caller with callerTargetOnly', async () => {
+    const test = await harness(); tests.push(test)
+    const agent = agentFor(test.ctx, 'original')
+    const scoped = { ...test, agent, scope: createScope(test.ctx, agent) }
+    await scoped.scope.ctx.plugin(ToolSchedule, { callerTargetOnly: true })
+    const other = await createOther(scoped)
+    const own = await createTask(scoped)
+    expect(test.ctx.tools.schemas(agent).find(schema => schema.name === 'schedule_list')?.description)
+      .toBe('List scheduled tasks that deliver to this session. Active tasks come first, ordered by scheduledAt.')
+    expect(await call(scoped, 'schedule_list', {})).toEqual({ items: [own], shown: 1, total: 1, limit: DEFAULT_LIST_LIMIT, offset: 0 })
+    const missing = { id: other.id, code: 'schedule_not_found' }
+    expect(await call(scoped, 'schedule_view', { id: other.id })).toEqual(missing)
+    expect(await call(scoped, 'schedule_edit', { id: other.id, action: 'delete' })).toEqual(missing)
+    expect(await call(scoped, 'schedule_edit', { id: other.id, action: 'update', title: 'Renamed here' })).toEqual(missing)
+    expect(await stored(scoped, other.id)).toEqual(other)
+    expect(await call(scoped, 'schedule_edit', { id: own.id, action: 'update', title: 'Renamed here' }))
+      .toMatchObject({ title: 'Renamed here' })
+  })
+
   it('withholds failures that the tool does not declare', async () => {
     const test = await setup()
     vi.spyOn(test.service, 'list').mockRejectedValueOnce(new ScheduleInputError('not_future', 'private detail'))

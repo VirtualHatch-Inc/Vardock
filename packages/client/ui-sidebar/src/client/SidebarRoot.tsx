@@ -21,7 +21,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  FishLogo, IconAppsAddOutlineRegular, IconNewChatOutlineMedium, IconNewChatOutlineRegular,
+  FishLogo, IconAgentPresetOutlineMedium, IconAgentPresetOutlineRegular, IconAppsAddOutlineRegular,
+  IconNewChatOutlineMedium, IconNewChatOutlineRegular,
   IconPanelLeftOutlineRegular, IconPinFillRegular, focusWithoutRing, isBehindModal, isDarwinDesktop, Menu, ShortcutKeys, Toast,
   Tooltip, useModalLayer, writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -158,6 +159,7 @@ export function SidebarRoot({
   setPinned,
   trackEntryClick,
   useRemoteAccess,
+  useConversationEntrance,
   usePanels,
   useEntryPins,
   useEntryActions,
@@ -173,8 +175,12 @@ export function SidebarRoot({
   const hasEntryActions = useEntryActions(registered => registered)
   const shortcut = useShortcuts(rows => rows.find(row => row.id === 'sidebar.left.toggle'))
   const newShortcut = useShortcuts(rows => rows.find(row => row.id === 'session.new'))
-  // A page whose access snapshot excludes starting a Session offers no New Session affordance.
-  const canStartSession = useRemoteAccess('session/create')
+  const conversationEntrance = useConversationEntrance(value => value)
+  const canStartSession = useRemoteAccess(conversationEntrance?.action ?? 'session/create')
+  const primaryLabel = conversationEntrance?.label ?? t('session.new.label')
+  // An entrance opens one existing conversation, so its control carries no creation glyph.
+  const PrimaryIconMedium = conversationEntrance === null ? IconNewChatOutlineMedium : IconAgentPresetOutlineMedium
+  const PrimaryIconRegular = conversationEntrance === null ? IconNewChatOutlineRegular : IconAgentPresetOutlineRegular
   const toggleLabel = collapsed ? t('toggle.open') : t('toggle.collapse')
   // Wide content stays mounted while the collapse animates (fading via
   // .collapsed .wide), unmounts at settle, and remounts right away on expand.
@@ -193,7 +199,9 @@ export function SidebarRoot({
   )
   // The Windows titlebar hosts the New Session controls while the sidebar is collapsed.
   const openNewSession = (): void => {
-    trackEntryClick({ menu_name: 'new_session', position: windowsTitlebar && collapsed ? 'titlebar' : 'sidebar' })
+    if (conversationEntrance === null) {
+      trackEntryClick({ menu_name: 'new_session', position: windowsTitlebar && collapsed ? 'titlebar' : 'sidebar' })
+    }
     startSession()
   }
   // The Windows caption menus occupy the strip to the right of these controls
@@ -358,7 +366,7 @@ export function SidebarRoot({
               </span>
             </span>
           )
-          return darwinDesktop || !canStartSession
+          return darwinDesktop || conversationEntrance !== null || !canStartSession
             ? <span className={clsx(css.brand, css.wide)}>{identity}</span>
             : (
               <button
@@ -383,19 +391,19 @@ export function SidebarRoot({
         <div className={css.newSessionRow}>
           {renderSlot('sidebar.session.action', { wide }, {
             children: (
-              <Tooltip label={t('session.new.label')} shortcutKeys={newShortcut?.keys} delayMs={500} side={captionTooltipSide} disabled={wide}>
+              <Tooltip label={primaryLabel} shortcutKeys={newShortcut?.keys} delayMs={500} side={captionTooltipSide} disabled={wide}>
                 <button
                   type="button"
                   className={css.newSession}
-                  aria-label={t('session.new.label')}
+                  aria-label={primaryLabel}
                   aria-keyshortcuts={newShortcut?.aria}
                   onClick={openNewSession}
                 >
                   <span className={css.newSessionLabelMask}><span className={css.newSessionContent}>
                     {wide
-                      ? <IconNewChatOutlineMedium size={14} />
-                      : <IconNewChatOutlineRegular size={windowsTitlebar ? 16 : 18} />}
-                    {wide && <span className={clsx(css.newSessionLabel, css.wide)}>{t('session.new')}</span>}
+                      ? <PrimaryIconMedium size={14} />
+                      : <PrimaryIconRegular size={windowsTitlebar ? 16 : 18} />}
+                    {wide && <span className={clsx(css.newSessionLabel, css.wide)}>{conversationEntrance?.label ?? t('session.new')}</span>}
                   </span></span>
                   {wide && newShortcut !== undefined && newShortcut.keys.length > 0 && <span className={css.newSessionShortcut} aria-hidden="true">
                     <ShortcutKeys keys={newShortcut.keys} />
@@ -451,7 +459,7 @@ export function SidebarRoot({
             </nav>
           )}
           <div className={css.regionArea}>
-            {renderSlot('sidebar.workspaces', {
+            {conversationEntrance === null && renderSlot('sidebar.workspaces', {
               wide,
               expandSidebar: () => { if (collapsed) toggleSidebar() },
             }, { hookContext: sectionHookContext })}

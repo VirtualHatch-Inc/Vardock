@@ -68,6 +68,8 @@ export interface ApprovalPresentationRequest {
   readonly reason?: string
   /** Localized presentation copy; the audit reason remains unchanged. */
   readonly displayReason?: { readonly en: string; readonly [locale: string]: string }
+  /** Plain-text detail that describes the exact operation. */
+  readonly detail?: string
   /** Cancellation projected from the Host waterfall. */
   readonly signal?: AbortSignal
 }
@@ -94,6 +96,8 @@ export class PendingApproval {
   readonly reason: string | undefined
   /** Localized presentation copy, when supplied by the asker. */
   readonly displayReason: ApprovalPresentationRequest['displayReason']
+  /** Plain-text operation detail, when supplied by the asker. */
+  readonly detail: string | undefined
   /** Result returned by the Remote Event listener to the Host waterfall. */
   readonly result: Promise<ApprovalDecision>
 
@@ -116,6 +120,7 @@ export class PendingApproval {
     this.callId = request.callId
     this.reason = request.reason
     this.displayReason = request.displayReason
+    this.detail = request.detail
     const completion = Promise.withResolvers<ApprovalDecision>()
     this.result = completion.promise
     this.#resolve = completion.resolve
@@ -211,6 +216,10 @@ export interface ApprovalCardInput {
   title: string
   /** Localized scope or consequence of the decision. */
   description?: string
+  /** Plain-text operation detail displayed with its whitespace. */
+  detail?: string
+  /** Full audit reason available on demand beside the localized question. */
+  auditReason?: string
   /** Caller-localized warning label and explanation, with paragraphs separated by blank lines (`\n\n`). */
   warning?: { label: string; title: string; detail: string }
   /** Subject metadata for human recognition; the caller admits icon URLs. Never an authorization identity. */

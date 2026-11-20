@@ -286,7 +286,7 @@ interface RemoteInvocation {
 
 ## Remote 访问资源
 
-每个 Remote 方法都受 [`dsh-api-remote-access`](../../packages/api/remote-access/README.zh.md) 的访问控制：只有当该 principal 种类的 policy 在调用访问的每个资源上都绑定了列出该端点 action 的 role 时，非 owner 调用才被放行。拥有某个身份类型的包把其资源种类声明合并进 `TypertResourceMap`；内置的无身份资源 `global` 从不是其中的种类。Gateway 从 `@Remote({ resources })` 或 `@RemoteScope(key, { resources })` 的 `resources` 读取函数读取某个种类的身份，其次是把该种类声明为 `resource` 的 lookup 参数或作用域 Context，再次是在 `typert.resources` 中登记的默认字段或 resolver；不指向任何资源的调用访问 `global`。决策由 [Peer 身份属性 Agent Note](../../.agents/notes/implemented/architecture/2026-10-12-peer-principal-and-remote-access.zh.md) 负责。
+每个 Remote 方法都受 [`dsh-api-remote-access`](../../packages/api/remote-access/README.zh.md) 的访问控制。端点 guard 可以拒绝任意 principal 的调用。对于需要 policy 授权的非 owner 调用，policy 必须在调用访问的每个资源上绑定列出该端点 action 的 role。拥有某个身份类型的包把其资源种类声明合并进 `TypertResourceMap`；内置的无身份资源 `global` 从不是其中的种类。Gateway 从 `@Remote({ resources })` 或 `@RemoteScope(key, { resources })` 的 `resources` 读取函数读取某个种类的身份，其次是把该种类声明为 `resource` 的 lookup 参数或作用域 Context，再次是在 `typert.resources` 中登记的默认字段或 resolver；不指向任何资源的调用访问 `global`。决策由 [Peer 身份属性 Agent Note](../../.agents/notes/implemented/architecture/2026-10-12-peer-principal-and-remote-access.zh.md) 负责。
 
 ```ts type-equiv
 /**
@@ -383,7 +383,7 @@ interface TypertRemoteNamespaceMap {}
 
 ## Host Gateway
 
-Connection 会先解码 carrier envelope，再调用 `ctx.typertGateway`。请求将精确的具名 wire 字段、carrier 的取消 signal 与本次调用代表的 Peer 分开携带；每个载体与进程内调用方都显式给出该 Peer，Gateway 以 `gateway/peer-disposed` 拒绝已 dispose 的 Peer。对非 owner 调用，Gateway 在参数校验之后、任何 lookup 或 Context 解析之前解析其资源并询问 `ctx.remoteAccess.decide()`；基础设施与边界失败由 `TypertGatewayError` 承载，其 `gateway/*` 码就是普通的 `RemoteError` 码，因此 RPC 适配器会把每个经结构识别的 `RemoteError` 连同其 code 与 details 原样放行，只把无法识别的异常归并为 `gateway/internal`。
+Connection 会先解码 carrier envelope，再调用 `ctx.typertGateway`。请求将精确的具名 wire 字段、carrier 的取消 signal 与本次调用代表的 Peer 分开携带；每个载体与进程内调用方都显式给出该 Peer，Gateway 以 `gateway/peer-disposed` 拒绝已 dispose 的 Peer。对于每个 principal，Gateway 都在校验 JSON 参数后、解析 lookup 或 Context 前解析资源并调用 `ctx.remoteAccess.decide()`。基础设施与边界失败由 `TypertGatewayError` 承载，其 `gateway/*` 码就是普通的 `RemoteError` 码，因此 RPC 适配器会把每个经结构识别的 `RemoteError` 连同其 code 与 details 原样放行，只把无法识别的异常归并为 `gateway/internal`。
 
 ```ts type-equiv
 /** One Remote method request after a carrier has decoded its envelope. */
@@ -512,7 +512,7 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 ### `ctx.remoteAccess` — `RemoteAccessService`
 
-Registry of access policies, the Gateway's access decisions, list filtering, and the per-Peer access snapshot. Every composition that mounts the Gateway mounts this service too.
+Registry of access guards and policies, the Gateway's access decisions, list filtering, and the per-Peer access snapshot. Every composition that mounts the Gateway mounts this service too.
 
 ```ts cordis-catalog
 /**
@@ -526,6 +526,15 @@ Registry of access policies, the Gateway's access decisions, list filtering, and
 registerPolicy<K extends Exclude<keyof PrincipalMap, 'owner'>>(kind: K, policy: RemoteAccessPolicy<PrincipalMap[K]>): () => void
 
 /**
+ * Register a synchronous endpoint guard in the caller's fiber. The first
+ * refusal wins, including for the owner. A throwing guard refuses with
+ * `guard-failed` and logs its first failure until removed.
+ * @param guard - business-owned check for Remote calls and per-item filtering.
+ * @returns disposer removing this registration.
+ */
+guard(guard: RemoteAccessGuard): () => void
+
+/**
  * Report that the bindings or condition answers for `principal` may have
  * changed. Business packages call this on every grant, revocation, mode
  * change, and expiry; open snapshots re-push, and the next failure of each
@@ -535,20 +544,19 @@ registerPolicy<K extends Exclude<keyof PrincipalMap, 'owner'>>(kind: K, policy: 
 invalidate(principal?: Principal): void
 
 /**
- * Gateway-only: decide one request whose resources the Gateway resolved.
- * The owner is allowed, and so is `remoteAccess/follow`: every Peer reads
- * its own snapshot. Otherwise the action is allowed only when, on every
- * listed resource, some binding of the principal's policy names that
- * resource, has a role listing the action, and has no condition or a
- * condition that allows. `bindings()` is called once per decision.
+ * Decide one request whose resources the Gateway resolved.
+ * Endpoint guards run first. The owner and `remoteAccess/follow` then
+ * qualify without policy bindings. Other requests require a matching role
+ * that allows the action on every resource. Each policy check reads
+ * `bindings()` once.
  * @param request - the caller or recipient, the action, the resources it
  *   touches, and a call's arguments.
- * @returns `allow`; or `deny` with `no-allow` when the principal kind has
- *   no policy, the first refusing condition's reason on the first resource
- *   no binding allows, else `explain()`'s reason, else `no-allow`;
- *   `policy-failed` when `bindings()`, a condition, or `explain()` throws,
- *   logged once per policy until the next `invalidate()`. The Gateway
- *   throws `remote-access/denied` for a denied call and drops a denied event.
+ * @returns `allow` or a refusal. Guards supply their reason or `guard-failed`
+ *   on exception. Policy refusals use the first refusing condition on the
+ *   first resource without a grant, then `explain()`, then `no-allow`.
+ *   Exceptions from policy callbacks produce `policy-failed`, logged once per
+ *   policy until the next `invalidate()`. The Gateway throws
+ *   `remote-access/denied` for a denied call and drops a denied event.
  */
 decide(request: RemoteAccessRequest<Principal>): RemoteAccessDecision
 
@@ -559,9 +567,9 @@ decide(request: RemoteAccessRequest<Principal>): RemoteAccessDecision
  * check reads the policy's bindings again, so a long-running stream sees
  * binding changes from the next check on.
  * @param resource - resource of one result item.
- * @returns true for the owner and outside a Remote call; otherwise whether
- *   the invocation's endpoint action is allowed on `resource` without call
- *   arguments, false when the policy is absent or fails.
+ * @returns true outside a Remote call. Inside one, true if no endpoint guard
+ *   refuses and the owner or a policy binding permits the action on `resource`.
+ *   Checks omit call arguments.
  */
 allows(resource: RemoteAccessResource): boolean
 
@@ -570,7 +578,7 @@ allows(resource: RemoteAccessResource): boolean
  * index the webServer renders carries it under
  * {@link REMOTE_ACCESS_SNAPSHOT_KEY} for the Peer the page speaks for.
  * @param principal - the page's caller identity.
- * @returns the owner baseline for the owner; otherwise the principal's current grants.
+ * @returns the owner baseline for the owner, or the principal's current policy grants.
  */
 snapshotFor(principal: Principal): RemoteAccessBaseline
 

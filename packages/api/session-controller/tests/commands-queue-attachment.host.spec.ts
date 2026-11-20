@@ -91,6 +91,7 @@ async function commandHarness(
     whenIdle: vi.fn(() => Promise.resolve()),
     runMaintenance: async () => { throw new Error('unexpected maintenance') },
     send: vi.fn(),
+    wake: vi.fn(),
     inject: vi.fn(),
     session,
     model: unsupportedModel(),

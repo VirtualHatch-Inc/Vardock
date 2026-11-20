@@ -34,7 +34,7 @@ function registerUi(ctx: Context): void {
     }, 'voice-input: plugin navigation presence')
   })
   const actions: VoiceInputInjected = {
-    openSettings: () => { ctx.get('pluginNavigation')?.openBundle('@deepseek-ai/dsh-experimental-voice-input-bundle') },
+    openSettings: () => { ctx.get('pluginNavigation')?.openItem('voice-input') },
     hooks: { speechReadiness: readiness.state, microphoneDevice: microphone, pluginNavigation },
     selectMicrophone: (device) => { microphone.set(device) },
     createRecording: () => {
@@ -54,6 +54,10 @@ function registerUi(ctx: Context): void {
   ctx.slots.inject('conversation.input.activity', () => ctx.slots.register({
     name: 'conversation.input.activity', locale: NS, inject: () => actions,
   }, VoiceInput))
+  ctx.slots.inject('plugins.item', () => ctx.slots.register({
+    name: 'plugins.item', id: 'voice-input', label: () => ctx.locale.bind(NS)('settings.title'), locale: NS,
+    inject: () => actions,
+  }, VoicePreparation))
   ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({ name: 'plugins.bundle.config',
     key: '@deepseek-ai/dsh-experimental-voice-input-bundle', locale: NS, inject: () => actions,
   }, VoicePreparation))

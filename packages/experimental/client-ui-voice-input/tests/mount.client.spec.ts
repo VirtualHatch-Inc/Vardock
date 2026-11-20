@@ -12,6 +12,10 @@ import { mountVoiceInput, inject } from '../src/client/mount.ts'
 import { apply as hostApply } from '../src/index.ts'
 import { VoiceInput, type VoiceInputInjected } from '../src/client/VoiceInput.tsx'
 import { captureFixture } from './audio-fixture.client.ts'
+import { StaticRemoteAccess, TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
+import { apply as applyManager, inject as managerInject } from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
+import type { PluginManagerFace } from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
+import { VoicePreparation } from '../src/client/PreparationCard.tsx'
 
 const REMOTE: TypertRemoteContribution = {
   package: '@deepseek-ai/dsh-experimental-api-speech-to-text',
@@ -44,8 +48,8 @@ async function fixture(fail = false, navigation = true) {
     }
   }
   new Remote()
-  const openBundle = vi.fn()
-  if (navigation) ctx.provide('pluginNavigation', { openBundle })
+  const openItem = vi.fn()
+  if (navigation) ctx.provide('pluginNavigation', { openItem })
   const configure = vi.fn(async () => ({ ok: true, value: {} }))
   const prepare = vi.fn(async () => ({ ok: true, value: {} }))
   const cancelPreparation = vi.fn(async () => ({ ok: true, value: {} }))
@@ -54,14 +58,58 @@ async function fixture(fail = false, navigation = true) {
   ctx.provide('locale', new LocaleRuntime(ctx))
   await ctx.plugin(SlotRegistry)
   ctx.slots.register({ name: 'root', children: {
+    'plugins.item': { kind: 'list', scope: 'root' },
     'conversation.input.activity': { kind: 'single', scope: 'session' },
     'plugins.bundle.activation': { kind: 'keyed', scope: 'root' },
     'plugins.bundle.config': { kind: 'keyed', scope: 'root' },
   } } as never,
   () => null)
   if (fail) vi.spyOn(ctx.slots, 'inject').mockImplementationOnce(() => { throw new Error('slot failed') })
-  return { ctx, unmount, openBundle, configure, prepare, cancelPreparation, transcribe }
+  return { ctx, unmount, openItem, configure, prepare, cancelPreparation, transcribe }
 }
+
+it('opens the contributed voice preparation page under fixed management without starting preparation', async () => {
+  const ctx = new Context(), prepare = vi.fn()
+  try {
+    await ctx.plugin(SlotRegistry)
+    ctx.provide('locale', new LocaleRuntime(ctx))
+    new StaticRemoteAccess(ctx, () => true)
+    const panelInfo = createSnapshotStore({ activePanelId: null as string | null })
+    ctx.provide('layout', { panelInfo, selectPanel: (activePanelId: string) => { panelInfo.set({ activePanelId }) } })
+    ctx.provide('configForms', { describe: () => createSnapshotStore({ namespaces: [] }) })
+    const remote = new TestRemote(ctx, {
+      pluginManager: {
+        management: async () => ({ ok: true, value: 'fixed' }),
+        listBundles: async () => ({ ok: true, value: [] }),
+        listPlugins: async () => ({ ok: true, value: [] }),
+        registries: async () => ({ ok: true, value: { registry: null, fallbackRegistries: [], resolved: null } }),
+      },
+      pluginInventory: { list: async () => ({ ok: true, value: { entries: [], managementAvailable: true } }) },
+      pluginRegistryProbe: {}, speech: { prepare },
+    })
+    vi.spyOn(remote, '$mount').mockResolvedValue(async () => {})
+    ctx.slots.register({ name: 'root', children: {
+      main: { kind: 'keyed', scope: 'root' },
+      'conversation.input.activity': { kind: 'single', scope: 'session' },
+    } } as never, () => null)
+    await ctx.plugin({ inject: [...managerInject], apply: applyManager })
+    await ctx.plugin({ inject: [...inject], apply: scope => mountVoiceInput(scope, REMOTE) })
+    const page = ctx.slots.entries('main')[0]!
+    const injected: object = page.inject!()
+    const face = injected as PluginManagerFace
+    face.ensure()
+    await vi.waitFor(() => { expect(face.hooks.pluginManager.getSnapshot()).toMatchObject({ status: 'ready', management: 'fixed', packages: [] }) })
+    const actions = ctx.slots.entries('conversation.input.activity')[0]!.inject!()
+    assertVoiceActions(actions)
+    actions.openSettings()
+    assert(page.store && 'create' in page.store)
+    expect(page.store.create().getSnapshot()).toEqual({ tab: 'installed', view: { kind: 'item', id: 'voice-input' } })
+    expect(ctx.slots.entries('plugins.item').find(entry => entry.options.id === 'voice-input')?.component).toBe(VoicePreparation)
+    expect(prepare).not.toHaveBeenCalled()
+  } finally {
+    await ctx.fiber.dispose()
+  }
+})
 
 it('starts without the Plugins page navigation and follows its presence', async () => {
   hostApply()
@@ -73,11 +121,11 @@ it('starts without the Plugins page navigation and follows its presence', async 
     assertVoiceActions(actions)
     expect(actions.hooks.pluginNavigation.getSnapshot()).toBe(false)
     expect(() => { actions.openSettings() }).not.toThrow()
-    const navigation = b.ctx.plugin({ apply: (ctx: Context) => { ctx.provide('pluginNavigation', { openBundle: b.openBundle } as never) } })
+    const navigation = b.ctx.plugin({ apply: (ctx: Context) => { ctx.provide('pluginNavigation', { openItem: b.openItem } as never) } })
     await navigation
     await vi.waitFor(() => { expect(actions.hooks.pluginNavigation.getSnapshot()).toBe(true) })
     actions.openSettings()
-    expect(b.openBundle).toHaveBeenCalledWith('@deepseek-ai/dsh-experimental-voice-input-bundle')
+    expect(b.openItem).toHaveBeenCalledWith('voice-input')
     await navigation.dispose()
     expect(actions.hooks.pluginNavigation.getSnapshot()).toBe(false)
   } finally {
@@ -96,7 +144,7 @@ it('withdraws its Remote, localized slot and microphone captures on disposal', a
     const actions = entry!.inject!()
     assertVoiceActions(actions)
     actions.openSettings()
-    expect(b.openBundle).toHaveBeenCalledWith('@deepseek-ai/dsh-experimental-voice-input-bundle')
+    expect(b.openItem).toHaveBeenCalledWith('voice-input')
     const finished = actions.createRecording()
     assert(finished instanceof Recording)
     await finished.dispose()

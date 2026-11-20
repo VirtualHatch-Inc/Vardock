@@ -1,5 +1,5 @@
 ---
-description: "Method-level Remote access control for non-owner Peers: role-based policy decisions, list filtering, and the per-Peer access snapshot."
+description: "Remote access control with endpoint guards, role-based policies, list filtering, and per-Peer grant snapshots."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Decides which Remote methods a non-owner Peer may call and which forwarded events it may receive. Business packages define roles, each an action set over one resource kind, and register one policy per non-owner principal kind that binds roles to resources. The [API Gateway](../gateway/README.md) resolves the resources a call or event touches and asks this package before it resolves lookups or decodes arguments. List methods filter items through `allows()`, and each Peer follows its own access snapshot, so the Client can hide entries the Host would refuse. The [Peer principals Agent Note](../../../.agents/notes/implemented/architecture/2026-10-12-peer-principal-and-remote-access.md) owns the design.
+Business packages can guard Remote calls and list items for any principal, including the owner. Role policies also govern non-owner calls and forwarded events. The [API Gateway](../gateway/README.md) checks call resources after JSON validation and before lookup resolution. List methods filter items through `allows()`. Each Client follows its Peer’s grant snapshot to hide entries outside those grants. The [Peer principals Agent Note](../../../.agents/notes/implemented/architecture/2026-10-12-peer-principal-and-remote-access.md) describes the design.
 
 ## Table of Contents
 
@@ -24,18 +24,19 @@ Decides which Remote methods a non-owner Peer may call and which forwarded event
 <a id="host-service"></a>
 ## Host service: `RemoteAccessService` (ctx key: `remoteAccess`)
 
-Every composition that mounts [API Gateway](../gateway/README.md) mounts this service: the Gateway injects `remoteAccess` and does not start without it. [`bundle/base`](../../bundle/base/cordis.patch.yml) loads it beside `typert-gateway`. The owner (`{ kind: 'owner' }`) is never checked; every method below concerns non-owner principals.
+Every composition that mounts [API Gateway](../gateway/README.md) mounts this service: the Gateway injects `remoteAccess` and does not start without it. [`bundle/base`](../../bundle/base/cordis.patch.yml) loads it beside `typert-gateway`.
 
 | Member | Contract |
 |---|---|
+| `guard(callback)` | Registers a synchronous check in the caller’s fiber and returns its disposer. The callback receives the same request as `decide()` for calls and a single resource without `args` for list items. It returns a public refusal reason or `undefined` to continue. |
 | `registerPolicy(kind, policy)` | Registers the `RemoteAccessPolicy` of one non-owner principal kind; its `bindings()` and `explain()` receive principals typed by that kind. A second policy for the same kind throws. The registration is a Cordis effect of the caller's fiber; registration and removal recompute open snapshots. |
 | `invalidate(principal?)` | Reports that bindings or condition answers for one principal, or for every principal, may have changed. A business package calls it on every grant, revocation, mode change, and expiry. |
-| `decide(request)` | Gateway-only. `request` is `{ principal, action, resources, args? }`: the caller or recipient, the endpoint `ns/method` or `event:<name>`, the valid resources the Gateway resolved, and a call's arguments validated against their Typert-compiled types, with lookup parameters as wire identities. Returns `{ kind: 'allow' }` or `{ kind: 'deny', reason }`; the Gateway throws `remote-access/denied` with details `{ action, reason }` for a denied call and drops a denied event without building an error. The owner and `remoteAccess/follow` are always allowed. |
-| `allows(resource)` | Reads the invocation of the Context that accessed the service, so a list method calls `this.ctx.remoteAccess.allows(resource)` for each item. Decides the call's endpoint action on that resource without arguments, reading the bindings again on every check. True for the owner and outside a Remote call. |
+| `decide(request)` | Gateway-only. `request` is `{ principal, action, resources, args? }`: the caller or recipient, the endpoint `ns/method` or `event:<name>`, the valid resources the Gateway resolved, and a call's arguments validated against their Typert-compiled types, with lookup parameters as wire identities. Returns `{ kind: 'allow' }` or `{ kind: 'deny', reason }`; the Gateway throws `remote-access/denied` with details `{ action, reason }` for a denied call and drops a denied event without building an error. The first endpoint guard to refuse decides the result. The owner and `remoteAccess/follow` then qualify without policy bindings. |
+| `allows(resource)` | Reads the invocation of the Context that accessed the service, so a list method calls `this.ctx.remoteAccess.allows(resource)` for each item. Checks guards and non-owner policy bindings on that resource without arguments. Returns true outside a Remote call. |
 | `snapshotFor(principal)` | The baseline a page opens with: `{ type: 'baseline', owner: true }` for the owner, otherwise the principal's current grants. |
 | `follow(signal)` | Remote stream `remoteAccess/follow`: one `baseline`, then `upsert` and `remove` frames. The owner receives only `{ type: 'baseline', owner: true }`. The stream ends when `signal` aborts or the service unloads, so a reloaded service starts every reader from a fresh baseline. |
 
-A role `{ name, resource, actions }` is a plain value naming an action set over one resource kind, `global` or a kind declared in `TypertResourceMap`. A binding `{ role, resource, condition? }` grants the role on one resource of the role's kind. A policy answers `bindings(principal)` and an optional `explain(request)` synchronously from state it holds in memory. A request is allowed only when, on every resolved resource, some binding names that resource, its role lists the action, and it has no condition or its condition allows. Resources are independent: a grant on `global` implies nothing on any other resource, and no resource implies another. A condition receives `{ action, resource, args? }` and runs only for a binding whose resource and role match; `args` is absent for events, snapshots, and list filtering. `bindings()` runs once per `decide()`, once per `allows()` check, and once per snapshot computation; it is never cached across decisions, so time-dependent state applies to the next call.
+A role `{ name, resource, actions }` is a plain value naming an action set over one resource kind, `global` or a kind declared in `TypertResourceMap`. A binding `{ role, resource, condition? }` grants the role on one resource of the role's kind. A policy answers `bindings(principal)` and an optional `explain(request)` synchronously from state it holds in memory. A policy grants a request only when, on every resolved resource, some binding names that resource, its role lists the action, and it has no condition or its condition allows. Resources are independent: a grant on `global` implies nothing on any other resource, and no resource implies another. A condition receives `{ action, resource, args? }` and runs only for a binding whose resource and role match; `args` is absent for events, snapshots, and list filtering. `bindings()` runs once per policy check and once per snapshot computation. The service reads current bindings on every check.
 
 The Gateway resolves resources from `@Remote` and `@RemoteScope` `resources` readers, lookup and Host Context adapter `resource` declarations, and the default field or resolver declarations in `typert.resources`, and the [API Gateway](../gateway/README.md) owns that order; this package reads no argument field. A call that names no resource touches the `global` resource alone, so only a `global` role can allow it; putting an action in a `global` role lets the principal call it on any resource the call does not name. The Gateway refuses a call whose resources are invalid with `resource-invalid` without asking `decide()`.
 
@@ -51,10 +52,12 @@ The service adds a `global` row named `REMOTE_ACCESS_SNAPSHOT_KEY` (`__DSH_REMOT
 |---|---|
 | `resource-invalid` | Given by the Gateway before `decide()`: a resource reader threw or returned an empty list, or a resource id, including a Context identity, is not a non-empty string. |
 | `no-allow` | The principal kind has no policy, or no binding allows the action on some resource and neither a condition nor `explain()` names a reason. |
+| Guard reason | The first registered guard that refuses the endpoint check provides the reason. |
+| `guard-failed` | A guard threw. The service logs the first failure of each registration and refuses the affected call or item. |
 | `policy-failed` | `bindings()`, a condition, or `explain()` threw; the failure is logged as described above. |
 | condition or `explain()` reason | On the first resource no binding allows, the first refusing condition of a matching binding names the reason; without one, `explain(request)` does. |
 
-Snapshot grants list, per resource the principal's bindings name, the sorted endpoint actions of those bindings' roles that `decide()` allows there without call arguments, so the snapshot agrees with `decide()` for the same principal, action, and resource; a resource with no such action gets no grant, and the stream pushes `remove` once its allowed set becomes empty. `event:` actions never enter the snapshot. Snapshots are recomputed only after `invalidate()` and policy registration or removal.
+Snapshot grants list the sorted endpoint actions granted by the principal’s policy bindings for each resource without call arguments. The stream pushes `remove` when a resource loses its last granted action. Snapshots track policy grants, while endpoint guards apply to live calls and list items. Snapshots are recomputed only after `invalidate()` and policy registration or removal.
 
 <a id="client-face"></a>
 ## Client face

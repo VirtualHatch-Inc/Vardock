@@ -1,19 +1,19 @@
 ---
-description: "配置和维护 Windows 打包 runner、签名凭据、EV Token 与签名缓存。运行分支代码或访问 Token 前，先阅读已接受的隔离风险。硬件失败需要操作者检查；打包成功不代表安装或生产发布已通过验收。"
+description: "配置 Windows 签名凭据、EV Token 与签名缓存。访问 Token 前，先阅读信任前提。硬件失败需要操作者检查；打包成功不代表安装或生产发布已通过验收。"
 ---
 
-# Windows 签名与 runner 运维
+# Windows 签名
 
 [English](README.md) | 中文
 
 ## 概述
 
-配置和维护 Windows 打包 runner、签名凭据、EV Token 与签名缓存。运行分支代码或访问 Token 前，先阅读已接受的隔离风险。硬件失败需要操作者检查；打包成功不代表安装或生产发布已通过验收。
+配置 Windows 签名凭据、EV Token 与签名缓存。访问 Token 前，先阅读信任前提。硬件失败需要操作者检查；打包成功不代表安装或生产发布已通过验收。
 
 ## 目录
 
 - [信任前提与隔离缺陷](#trust-and-isolation)
-- [机器配置与 runner 启动](#machine-setup)
+- [机器配置](#machine-setup)
 - [签名配置](#signing-configuration)
 - [签名与时间戳处理](#windows-ev-signing)
 - [失败记录与人工恢复](#failure-and-recovery)
@@ -24,37 +24,13 @@ description: "配置和维护 Windows 打包 runner、签名凭据、EV Token �
 
 ## 信任前提与隔离缺陷
 
-共享打包 runner 以内部团队代码和操作人员可信为前提。在此前提下，凭据和设备隔离暂缓实施，剩余风险按已知风险接受（由 #5973 跟踪）；尚未强制限制仅 signed/master 可访问。未签名模式跳过签名文件加载，但无法阻止同一 Windows 账户下的分支代码读取这些文件或访问 Token。SafeNet Single Logon 可能复用认证状态。直接调用设备可以绕过签名脚本并耗尽 PIN 重试次数；持久失败 interlock 只保护经过这些脚本的调用。跨账户 Token 隔离和剩余重试次数尚未验证。扩大访问范围、执行不可信贡献、改变 runner 共享方式前，或出现可疑活动后，重新评估 runner、账户和设备隔离。
+签名以打包机器上的代码和操作人员可信为前提。未签名模式跳过签名文件加载，但无法阻止同一 Windows 账户下的其他代码读取这些文件或访问 Token。SafeNet Single Logon 可能复用认证状态。直接调用设备可以绕过签名脚本并耗尽 PIN 重试次数；持久失败 interlock 只保护经过这些脚本的调用。跨账户 Token 隔离和剩余重试次数尚未验证。在该机器上运行不可信代码前，或出现可疑活动后，重新评估账户和设备隔离。
 
 <a id="machine-setup"></a>
 
-## 机器配置与 runner 启动
+## 机器配置
 
-使用 runner 专用 checkout，并将配置、证书和缓存放在其外部。注册和工具安装由操作者负责。打包输入与产物获取见[打包指南](../packaging/README.zh.md#windows-actions)。
-
-运行 `pwsh -NoProfile -File apps/desktop/scripts/setup-windows-packaging.ps1 -Root <absolute-machine-root>` 创建私有 `packaging/{presets,secrets,certificates}` 和 `cache/windows-signatures` 目录并复制模板，不覆盖现有文件。添加 `-CheckOnly` 只检查不写入。在机器上填写 [preset 模板](../config/windows-packaging/test.env.example)和[签名模板](../config/windows-packaging/windows-signing.env.example)。从同一 scripts 目录运行 `start-windows-packaging-runner.ps1 -RunnerRoot <registered-runner-directory> -ConfigRoot <machine-root>/packaging -CheckOnly`，检查 runner 的 `tools` 目录下 PowerShell 7.6.6、Node、Python、Git、tar 和 Visual C++ 工具；打包 `--check` 完成其余工具链检查。省略 `-CheckOnly`，以显式配置目录和清理后的继承环境启动现有 runner。注册和工具安装单独进行；这些脚本不创建 token、不改系统安全设置、不清除签名失败记录。修改 preset 缓存路径前，使用下文签名缓存维护命令迁移已有条目。
-
-### 受监督启动
-
-完整的注册、标签、路由和审批配置顺序见 [CI 发布配置](../publishing/ci/README.zh.md#setup-sequence)。任务安装器需要 Windows .NET Framework 4.5+ 编译器，路径为 `%SystemRoot%/Microsoft.NET/Framework64/v4.0.30319/csc.exe`。它将 GUI 可执行文件编译到 `runner/dsh-task/launcher.exe`；该程序不分配控制台地启动 PowerShell，并等待其退出。`run.ps1` 自身的输出和错误分别写入名称唯一的 `launcher-*.out.log` 和 `launcher-*.err.log`，文件名包含 UTC 时间、PID 和随机标识。启动器失败时禁用周期启动，包括尚未读取重试预算时发生的失败。任务结果 `2` 表示启动器失败，`3` 表示无法写入错误日志，`4` 表示禁用任务也失败，需要操作者在计划任务中手动禁用。直接子进程退出后，最多等待五秒排空输出；超时返回 `5`，将诊断写入 `launcher-*.drain.log`：输出可能不完整，但周期恢复仍受原有重试预算约束。后代进程可能在 runner 退出后继续运行；日志排空不会终止它们。记录的停止目标是启动器进程，因此 stop 覆盖启动器及其后代。正常 runner 输出仍保存在 `run-*.log`。
-
-以 runner 的 Windows 用户运行 `pwsh -NoProfile -File apps/desktop/scripts/windows-runner-task.ps1 -Action install -RunnerRoot <registered-runner-directory> -ConfigRoot <machine-root>/packaging`，使用该机器安装的 PowerShell 7。安装器检查环境，并将启动脚本复制到 `runner/dsh-task`；注册、工具和凭据仍单独管理。它注册一个初始禁用、权限受限的交互式计划任务，不保存账户密码。任务优先级 4 让 runner 及子进程使用普通 CPU、I/O 和内存优先级；计划任务默认值 7 会降低三者的优先级，使依赖安装变慢。已有任务保留原设置：在 runner 空闲时停止、卸载并重新安装任务，再启动。执行 `-Action start` 或 `-Action status` 时只传 `-RunnerRoot`；配置目录及重试选项仅适用于安装。任务在该用户登录桌面后启动，重启后也需要登录，注销时停止。它不提供无人值守开机，也不解锁签名 Token。
-
-任务只允许一个实例，且没有执行时限。周期触发器每隔 `-RestartMinutes` 分钟（默认 `1`）检查一次，并恢复已退出的启动器，包括意外的零退出码。持久预算允许首次启动及 `-RestartCount` 次重启（默认 `10`），直到再次显式启动。每次桌面登录也会消耗预算，`status` 显示剩余启动次数；预算耗尽后，仅登录不能重启 runner。对正在运行的任务执行 start 不会重置预算。预算或配置文件缺失、无效时，自动启动会禁用，需修复后恢复。GitHub 启动器负责 runner 更新；任务恢复不会重跑失败的 workflow，也不会清除签名互锁。重试耗尽后，检查 `runner/dsh-task/run-*.log`、runner 的 `_diag` 日志和 `status`，修复原因后运行 `start`。任务运行不等于连接成功：确认出现 `Connected to GitHub` 和 `Listening for Jobs`，再到 Actions 确认任务分配。`run-*.log` 和 `launcher-*.log` 均保留，由操作者管理清理。
-
-维护前暂停新 workflow 的触发，等待 runner 空闲。`-Action stop` 在该 runner 存在活跃 worker 时拒绝停止，否则禁用后续启动并停止任务进程树；本地检查无法阻止 GitHub 同时分配任务。`-Action uninstall` 要求任务已停止并禁用，保留注册、配置和日志。拉取仓库更新不会更新已安装的副本。升级时先记录原来的 -ConfigRoot、可选的 -NetworkRoot 和重试设置，再从更新后的 checkout 依次执行 `stop`、`uninstall`、携带原设置的 `install` 和 `start`，最后重新确认监听与 job 分配。迁移手动启动的 runner 时，只在空闲后停止原启动器，再启动计划任务；不要同时运行两个启动器。
-
-操作者可在 Windows 上运行 `pwsh -NoProfile -File apps/desktop/tests/windows-runner-task.ps1`，使用隔离的假 runner 验证安装、无控制台的首次启动与自动恢复、防止重复启动、停止、子进程退出、启动／日志失败时的禁用处理和卸载。此显式运行的测试创建临时任务并保留诊断文件，不连接 GitHub 或访问签名硬件。`pwsh -NoProfile -File apps/desktop/tests/windows-runner-launcher.ps1` 无需计划任务，检查 GUI 可执行文件、子进程无控制台、退出状态、诊断输出以及存在继承管道写端时的有界排空；Windows CI 会执行该测试。真实机器验收还需检查空闲 runner 上线且不出现 Terminal 窗口、Actions job 分配，以及经操作者批准的重启后登录。签名打包和注销／重启验收需要操作者单独验证。
-
-### 可选网络依赖
-
-`ConfigRoot` 中没有 `runner-network.json` 时，启动仍使用清理继承环境后的直连行为。要配置网络依赖，请在 checkout 外创建操作者管理的该 JSON 文件，且只包含 `proxyUrl`、`noProxy`、`serviceName`、`probeUrl`、`attempts`、`timeoutSeconds` 和 `retrySeconds`。前四个字段为字符串，后三个预算为 1 至 60 的整数。直连时将 `proxyUrl` 留空，没有 Windows 服务管理依赖时将 `serviceName` 留空。URL 必须使用 HTTP(S)，不能包含凭据、查询参数或片段；代理 URL 不能包含路径。启动脚本在清理环境后设置 `HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY` 和 `NODE_USE_ENV_PROXY`，并要求 Node HEAD 探测成功才允许启动 runner。服务就绪检查不会启动或停止 Windows 服务。
-
-若使用专用子进程，在安装任务时添加 `-NetworkRoot <absolute-private-network-directory>`。该目录必须包含 `launch.json`，且只包含绝对路径的 `executable` 文件名、字符串数组 `arguments`，以及 1 至 3600 的整数 `restartDelaySeconds`。此模式要求存在 `runner-network.json`，其中 `serviceName` 应留空。为子进程分配独立的数据目录、监听绑定和可执行文件标识，与桌面软件管理的应用分离；仅使用不同端口无法防止其他管理器按可执行文件名终止进程。脚本不会修改桌面网络设置。实际服务商名称、路径、地址、端口和参数只保存在机器配置中，不得写入仓库文件或共享日志。将两个配置目录的访问权限限制为 runner 操作者。
-
-安装时会启动依赖进行就绪检查，并在注册任务前停止它。runner 存活期间，守卫仅在自己拥有的网络进程退出后，按配置间隔重新启动它；启动连续失败时仍会重试，但不会重启 runner、重跑任务或重试签名。退出、重启和启动失败消息写入 `run-*.log`，依赖进程的输出会被丢弃。重启消息只表明进程已创建，不代表网络可用；请在 runner 日志中确认重新连接。进程仍存活但无响应时需要操作者排查。守卫独占锁定 `NetworkRoot`，回收残留子进程前核对 PID、启动时间和可执行文件，并在 runner 退出时停止子进程。不可恢复的守卫错误会保留活动 runner 直到其退出，并报告恢复已停止。重新安装时保留 `NetworkRoot`；仅拉取代码不会替换已安装的辅助脚本。
-
-Windows CI 使用隔离的本地 fixture 运行 `pwsh -NoProfile -File apps/desktop/tests/windows-runner-network.ps1` 和 `pwsh -NoProfile -File apps/desktop/tests/windows-runner-network-process.ps1`。在已配置的打包机器上，给第一条命令添加 `-CheckStartup`，可验证实际启动环境清理后的网络配置。这些测试不会使用签名硬件或外部网络端点。
+运行 `pwsh -NoProfile -File apps/desktop/scripts/setup-windows-packaging.ps1 -Root <absolute-machine-root>` 创建私有 `packaging/{presets,secrets,certificates}` 和 `cache/windows-signatures` 目录并复制模板，不覆盖现有文件。添加 `-CheckOnly` 只检查不写入。在机器上填写 [preset 模板](../config/windows-packaging/test.env.example)和[签名模板](../config/windows-packaging/windows-signing.env.example)；打包 `--check` 检查工具链。该配置脚本不创建 token、不改系统安全设置、不清除签名失败记录。修改 preset 缓存路径前，使用下文签名缓存维护命令迁移已有条目。
 
 <a id="signing-configuration"></a>
 
@@ -64,7 +40,7 @@ Windows CI 使用隔离的本地 fixture 运行 `pwsh -NoProfile -File apps/desk
 
 在 `.env.windows` 中填写 `DSH_DESKTOP_WINDOWS_CER_FILE`（公开 EV 叶证书）、`DSH_DESKTOP_WINDOWS_SIGNTOOL`（SafeNet 兼容的 SignTool）、`DSH_DESKTOP_WINDOWS_KEY_CONTAINER`（匹配的私钥容器）和 `DSH_DESKTOP_WINDOWS_TOKEN_PIN`（Token Password）。私钥仍保留在 USB Token；不要把证书或本地凭据文件提交到 Git。
 
-PIN 不能包含 `]`、引号或换行，因为这些字符用于分隔 SafeNet `/kc` 值或对应的 CMD 参数。CMD 会禁用延迟展开，因此包含 `!` 的 PIN 可以原样到达 SafeNet。打包流程不会把任何 `DSH_DESKTOP_WINDOWS_*` 字段传给构建与 运行时准备子进程；它只向签名预检、独立的第一方运行时签名阶段与 electron-builder 提供四个配置输入，在其他字段已经清理的环境中只向签名 CMD 提供经过校验的签名字段，在 SignTool 启动前清除这些字段，并遮盖 SignTool 诊断。SafeNet 仍要求 PIN 出现在 SignTool 进程命令行中。本地 `.env.windows` 或机器管理的 `secrets/windows-signing.env` 明文保存 PIN，应限制文件访问权限。CI 读取 checkout 外的机器签名文件，并在任务结束后保留。不要提交或分享文件内容，也不要把凭据写入日志。配置检查不会消耗 Token 的 PIN 尝试次数；签名仍在首次失败后停止整批任务。
+PIN 不能包含 `]`、引号或换行，因为这些字符用于分隔 SafeNet `/kc` 值或对应的 CMD 参数。CMD 会禁用延迟展开，因此包含 `!` 的 PIN 可以原样到达 SafeNet。打包流程不会把任何 `DSH_DESKTOP_WINDOWS_*` 字段传给构建与 运行时准备子进程；它只向签名预检、独立的第一方运行时签名阶段与 electron-builder 提供四个配置输入，在其他字段已经清理的环境中只向签名 CMD 提供经过校验的签名字段，在 SignTool 启动前清除这些字段，并遮盖 SignTool 诊断。SafeNet 仍要求 PIN 出现在 SignTool 进程命令行中。本地 `.env.windows` 或机器管理的 `secrets/windows-signing.env` 明文保存 PIN，应限制文件访问权限。不要提交或分享文件内容，也不要把凭据写入日志。配置检查不会消耗 Token 的 PIN 尝试次数；签名仍在首次失败后停止整批任务。
 
 签名 Windows 配置从同一份公开证书的 `CN`、`O` 和 `C` 属性生成 updater 的 `publisherName`。每个属性都必须存在、非空且只有一个值。这些身份属性允许证书续期，无需固定叶证书指纹。已安装应用的 `app-update.yml` 保存预期发布者，下载的清单不能选择该身份。未签名测试构建省略 updater 配置。真实文件验证及其限制见[签名验收记录](../tests/README.zh.md)。
 
@@ -114,7 +90,7 @@ Windows 打包从 `.env.windows` 或所选预设读取 `DSH_DESKTOP_WINDOWS_PACK
 
 ## 验证范围
 
-签名性能证据与更换 runner 后的复测由[签名并发验收](../tests/signing-concurrency/README.zh.md)维护。更新与安装证据由[Desktop 验证记录](../tests/README.zh.md)和[已安装更新流程](../tests/installed-update/README.zh.md)维护。本文档不授权 PIN 重试、自动删除 interlock、设备初始化或改变已接受的隔离策略。
+签名性能证据与更换机器后的复测由[签名并发验收](../tests/signing-concurrency/README.zh.md)维护。更新与安装证据由[Desktop 验证记录](../tests/README.zh.md)和[已安装更新流程](../tests/installed-update/README.zh.md)维护。本文档不授权 PIN 重试、自动删除 interlock、设备初始化或改变已接受的隔离策略。
 
 经操作人员授权后，可运行 `node apps/desktop/tests/windows-signing-concurrency.perf.ts --execute --config-root <打包配置目录的绝对路径> --rounds 2` 做并发实验。不加 `--execute` 只打印用法。默认比较完全串行、两个完成任务共用单路硬件签名，以及两路硬件签名，每批使用六个合成 PE 副本。第二轮反转模式顺序。
 

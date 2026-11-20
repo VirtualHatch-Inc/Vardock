@@ -46,6 +46,13 @@ export interface IConversation {
    */
   readonly blocks: ComposerBlocks
   /**
+   * Fill an empty draft in the caller's Session using the standard attachment upload queue.
+   * @param text - prompt to leave in the composer.
+   * @param files - browser files to attach to that draft.
+   * @returns Whether the editable draft accepted the text and files.
+   */
+  prepareEmptyDraft(text: string, files?: readonly File[]): boolean
+  /**
    * Send a prompt into the caller scope's session (queued turn).
    * @param text - prompt text, sent verbatim as one text block.
    * @returns completion; business failures reject (and land in promptError).
@@ -212,6 +219,23 @@ export class ConversationController extends Service implements IConversation {
     if (!result.ok) throw new Error(`conversation.send failed: ${result.error.code}: ${result.error.message}`)
   }
 
+  /** Prepare the caller's editable draft and stage its files without submitting it. */
+  prepareEmptyDraft(text: string, files: readonly File[] = []): boolean {
+    const id = this.scopeId('prepareEmptyDraft')
+    const session = this.scopedSession('prepareEmptyDraft')
+    const input = this.input.for(this.ctx)
+    const draft = input.state.getSnapshot()
+    if (draft.phase !== 'plain' || draft.draft !== '' || draft.attachmentIds.length > 0
+      || this.blocks.storeFor(id).getSnapshot() !== undefined) return false
+    const attachments = this.createDrafts(id, files, session.getSnapshot().subagent === null)
+    if (!input.addAttachments(attachments.map(attachment => attachment.id))) {
+      this.releaseDraftAttachments(attachments)
+      return false
+    }
+    input.setDraft(text)
+    return true
+  }
+
   /**
    * Submit ordered draft attachments with text through one host admission. A
    * local submission echo is registered first and enters the session snapshot
@@ -328,8 +352,9 @@ export class ConversationController extends Service implements IConversation {
    * @returns ordered draft descriptors.
    */
   createDrafts(sessionId: SessionId, files: readonly File[], uploadImages: boolean): readonly ComposerAttachment[] {
+    const verbatim = uploadImages && this.ctx.get('uiConversation')?.usesVerbatimAttachments(sessionId) === true
     return files.map((file) => {
-      if (isImageMediaType(file.type)) {
+      if (!verbatim && isImageMediaType(file.type)) {
         const attachment = browserDraftAttachment(file)
         this.draftAttachments.set(attachment.id, attachment)
         probeDimensions(attachment)

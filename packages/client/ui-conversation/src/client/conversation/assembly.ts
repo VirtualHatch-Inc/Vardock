@@ -211,6 +211,7 @@ export class UiConversation extends Service {
   readonly userText: UserTextRegistry
   /** Plugin-owned handlers for selection and context-menu gestures. */
   readonly interactions: ConversationInteractionRegistry
+  private readonly verbatimAttachmentPolicies = new Set<{ matches: (sessionId: SessionId) => boolean }>()
   private readonly bindings = new WeakMapWithValues<SessionBinding, BindingRecord>()
   private readonly images: HistoricalImageCache
 
@@ -249,6 +250,31 @@ export class UiConversation extends Service {
         for (const record of [...this.bindings.values]) this.drop(record, true)
       }
     }, 'ui-conversation assembly')
+  }
+
+  /**
+   * Register ordinary Sessions whose composer uploads selected files byte-for-byte, including images.
+   * @param matches - pure selection against the current Session identity.
+   * @returns disposer owned by the registering plugin.
+   */
+  registerVerbatimAttachmentPolicy(matches: (sessionId: SessionId) => boolean): () => Promise<void> {
+    const policy = { matches }
+    return this.ctx.effect(() => {
+      this.verbatimAttachmentPolicies.add(policy)
+      return () => { this.verbatimAttachmentPolicies.delete(policy) }
+    }, 'uiConversation: verbatim composer attachments')
+  }
+
+  /**
+   * Read the current composer classification for an ordinary Session at intake.
+   * @param sessionId - destination Session.
+   * @returns whether selected files use the verbatim upload path.
+   */
+  usesVerbatimAttachments(sessionId: SessionId): boolean {
+    for (const { matches } of this.verbatimAttachmentPolicies) {
+      if (matches(sessionId)) return true
+    }
+    return false
   }
 
   /**

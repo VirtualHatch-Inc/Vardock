@@ -286,7 +286,7 @@ interface RemoteInvocation {
 
 ## Remote access resources
 
-Every Remote method is under the access control of [`dsh-api-remote-access`](../../packages/api/remote-access/README.md): a non-owner call is allowed only when the policy for its principal kind binds, on every resource the call touches, a role that lists the endpoint action. The package that owns an identity type merge-declares its resource kind in `TypertResourceMap`; `global`, the built-in identity-less resource, is never a kind there. The Gateway reads a kind's identities from the `resources` readers of `@Remote({ resources })` or `@RemoteScope(key, { resources })`, else from a lookup parameter or scoped Context that declares the kind as its `resource`, else from the default field or resolver registered in `typert.resources`; a call that names no resource touches `global`. The [Peer principals Agent Note](../../.agents/notes/implemented/architecture/2026-10-12-peer-principal-and-remote-access.md) owns the decision.
+Every Remote method is under the access control of [`dsh-api-remote-access`](../../packages/api/remote-access/README.md). Endpoint guards can refuse a call from any principal. For non-owner calls that require policy grants, the policy must bind a role listing the endpoint action on every resource the call touches. The package that owns an identity type merge-declares its resource kind in `TypertResourceMap`; `global`, the built-in identity-less resource, is never a kind there. The Gateway reads a kind's identities from the `resources` readers of `@Remote({ resources })` or `@RemoteScope(key, { resources })`, else from a lookup parameter or scoped Context that declares the kind as its `resource`, else from the default field or resolver registered in `typert.resources`; a call that names no resource touches `global`. The [Peer principals Agent Note](../../.agents/notes/implemented/architecture/2026-10-12-peer-principal-and-remote-access.md) owns the decision.
 
 ```ts type-equiv
 /**
@@ -383,7 +383,7 @@ interface TypertRemoteNamespaceMap {}
 
 ## Host Gateway
 
-Connection decodes its carrier envelope before calling `ctx.typertGateway`. The request carries exact named wire fields, the carrier's cancellation signal, and the Peer the call speaks for separately; every carrier and in-process caller names that Peer, and the Gateway refuses a disposed one with `gateway/peer-disposed`. For a non-owner call the Gateway resolves its resources and asks `ctx.remoteAccess.decide()` after argument validation and before any lookup or Context resolution; infrastructure and boundary failures ride `TypertGatewayError`, whose `gateway/*` codes are ordinary `RemoteError` codes, so the RPC adapter passes every structurally identified `RemoteError` through with its code and details intact and folds only unrecognized exceptions into `gateway/internal`.
+Connection decodes its carrier envelope before calling `ctx.typertGateway`. The request carries exact named wire fields, the carrier's cancellation signal, and the Peer the call speaks for separately; every carrier and in-process caller names that Peer, and the Gateway refuses a disposed one with `gateway/peer-disposed`. The Gateway resolves resources and asks `ctx.remoteAccess.decide()` for every principal after validating JSON arguments and before resolving a lookup or Context. Infrastructure and boundary failures ride `TypertGatewayError`, whose `gateway/*` codes are ordinary `RemoteError` codes, so the RPC adapter passes every structurally identified `RemoteError` through with its code and details intact and folds only unrecognized exceptions into `gateway/internal`.
 
 ```ts type-equiv
 /** One Remote method request after a carrier has decoded its envelope. */
@@ -512,7 +512,7 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 ### `ctx.remoteAccess` — `RemoteAccessService`
 
-Registry of access policies, the Gateway's access decisions, list filtering, and the per-Peer access snapshot. Every composition that mounts the Gateway mounts this service too.
+Registry of access guards and policies, the Gateway's access decisions, list filtering, and the per-Peer access snapshot. Every composition that mounts the Gateway mounts this service too.
 
 ```ts cordis-catalog
 /**
@@ -526,6 +526,15 @@ Registry of access policies, the Gateway's access decisions, list filtering, and
 registerPolicy<K extends Exclude<keyof PrincipalMap, 'owner'>>(kind: K, policy: RemoteAccessPolicy<PrincipalMap[K]>): () => void
 
 /**
+ * Register a synchronous endpoint guard in the caller's fiber. The first
+ * refusal wins, including for the owner. A throwing guard refuses with
+ * `guard-failed` and logs its first failure until removed.
+ * @param guard - business-owned check for Remote calls and per-item filtering.
+ * @returns disposer removing this registration.
+ */
+guard(guard: RemoteAccessGuard): () => void
+
+/**
  * Report that the bindings or condition answers for `principal` may have
  * changed. Business packages call this on every grant, revocation, mode
  * change, and expiry; open snapshots re-push, and the next failure of each
@@ -535,20 +544,19 @@ registerPolicy<K extends Exclude<keyof PrincipalMap, 'owner'>>(kind: K, policy: 
 invalidate(principal?: Principal): void
 
 /**
- * Gateway-only: decide one request whose resources the Gateway resolved.
- * The owner is allowed, and so is `remoteAccess/follow`: every Peer reads
- * its own snapshot. Otherwise the action is allowed only when, on every
- * listed resource, some binding of the principal's policy names that
- * resource, has a role listing the action, and has no condition or a
- * condition that allows. `bindings()` is called once per decision.
+ * Decide one request whose resources the Gateway resolved.
+ * Endpoint guards run first. The owner and `remoteAccess/follow` then
+ * qualify without policy bindings. Other requests require a matching role
+ * that allows the action on every resource. Each policy check reads
+ * `bindings()` once.
  * @param request - the caller or recipient, the action, the resources it
  *   touches, and a call's arguments.
- * @returns `allow`; or `deny` with `no-allow` when the principal kind has
- *   no policy, the first refusing condition's reason on the first resource
- *   no binding allows, else `explain()`'s reason, else `no-allow`;
- *   `policy-failed` when `bindings()`, a condition, or `explain()` throws,
- *   logged once per policy until the next `invalidate()`. The Gateway
- *   throws `remote-access/denied` for a denied call and drops a denied event.
+ * @returns `allow` or a refusal. Guards supply their reason or `guard-failed`
+ *   on exception. Policy refusals use the first refusing condition on the
+ *   first resource without a grant, then `explain()`, then `no-allow`.
+ *   Exceptions from policy callbacks produce `policy-failed`, logged once per
+ *   policy until the next `invalidate()`. The Gateway throws
+ *   `remote-access/denied` for a denied call and drops a denied event.
  */
 decide(request: RemoteAccessRequest<Principal>): RemoteAccessDecision
 
@@ -559,9 +567,9 @@ decide(request: RemoteAccessRequest<Principal>): RemoteAccessDecision
  * check reads the policy's bindings again, so a long-running stream sees
  * binding changes from the next check on.
  * @param resource - resource of one result item.
- * @returns true for the owner and outside a Remote call; otherwise whether
- *   the invocation's endpoint action is allowed on `resource` without call
- *   arguments, false when the policy is absent or fails.
+ * @returns true outside a Remote call. Inside one, true if no endpoint guard
+ *   refuses and the owner or a policy binding permits the action on `resource`.
+ *   Checks omit call arguments.
  */
 allows(resource: RemoteAccessResource): boolean
 
@@ -570,7 +578,7 @@ allows(resource: RemoteAccessResource): boolean
  * index the webServer renders carries it under
  * {@link REMOTE_ACCESS_SNAPSHOT_KEY} for the Peer the page speaks for.
  * @param principal - the page's caller identity.
- * @returns the owner baseline for the owner; otherwise the principal's current grants.
+ * @returns the owner baseline for the owner, or the principal's current policy grants.
  */
 snapshotFor(principal: Principal): RemoteAccessBaseline
 

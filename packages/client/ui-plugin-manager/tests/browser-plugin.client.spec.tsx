@@ -83,6 +83,7 @@ async function bench(allows: ((action: string) => boolean) | 'switchable' = () =
     pluginInventory: { list },
     pluginRegistryProbe: { fastest: vi.fn(async () => ({ ok: true as const, value: null })) },
     pluginManager: {
+      management: vi.fn(() => Promise.resolve({ ok: true as const, value: 'full' as const })),
       listBundles: vi.fn(() => Promise.resolve({ ok: true as const, value: [] })),
       listPlugins: vi.fn(() => Promise.resolve({ ok: true as const, value: [] })),
       registries: vi.fn(() => Promise.resolve({ ok: true as const, value: { registry: null, fallbackRegistries: [], resolved: null } })),

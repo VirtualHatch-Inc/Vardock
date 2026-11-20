@@ -23,6 +23,8 @@ function assertNever(value: never): never {
 /** Convert expected capability failures into concise human-only outcomes. */
 function expectedFailure(error: ManualCompactionError): CommandResult {
   switch (error.code) {
+    case 'unsupported':
+      return { kind: 'error', text: 'The selected model does not support conversation compaction. Start a new conversation when its context is full.' }
     case 'busy':
       return {
         kind: 'error',

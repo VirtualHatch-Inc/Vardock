@@ -131,7 +131,6 @@ function createFixture(names: { main?: string; linked?: string } = {}): Fixture 
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     CI: 'false',
-    GITHUB_ACTIONS: 'false',
     GIT_AUTHOR_EMAIL: 'hooks@example.test',
     GIT_AUTHOR_NAME: 'Hooks Test',
     GIT_COMMITTER_EMAIL: 'hooks@example.test',
@@ -209,37 +208,27 @@ function runInstaller(
 
 // Every case builds scratch worktrees and drives them through spawned Git and
 // Node subprocesses, so the suite is bound by process creation rather than by
-// its assertions. The value matches DSH_COVERAGE_TEST_TIMEOUT_MS, which the
-// Windows coverage lane passes as --testTimeout: a describe value overrides that
-// flag rather than yielding to it, so a smaller one here lowers what the lane
-// grants every case in this file, none of which carries an allowance of its own.
-// Rationale and the paired hook budget are in
-// .agents/notes/archived/testing/2026-08-29-windows-lane-hook-and-lefthook-budget.md.
+// its assertions; no case carries an allowance of its own.
 describe('worktree-local Lefthook installer', { timeout: 90_000 }, () => {
-  for (const [label, extraEnv] of [
-    ['CI', { CI: 'true' }],
-    ['GitHub Actions', { GITHUB_ACTIONS: 'true' }],
-  ] satisfies [string, NodeJS.ProcessEnv][]) {
-    it(`skips hook installation when ${label} marks an automated job`, async () => {
-      const fixture = createFixture()
-      const common = commonDirectory(fixture)
-      const missingInclude = join(fixture.container, 'missing-ci-credentials.gitconfig')
-      git(fixture, fixture.main, [
-        'config',
-        '--local',
-        'includeIf.gitdir:/github/workspace/.git.path',
-        missingInclude,
-      ])
+  it('skips hook installation when CI marks an automated build', async () => {
+    const fixture = createFixture()
+    const common = commonDirectory(fixture)
+    const missingInclude = join(fixture.container, 'missing-build-credentials.gitconfig')
+    git(fixture, fixture.main, [
+      'config',
+      '--local',
+      'includeIf.gitdir:/build/workspace/.git.path',
+      missingInclude,
+    ])
 
-      const result = await runInstaller(fixture, fixture.main, extraEnv)
+    const result = await runInstaller(fixture, fixture.main, { CI: 'true' })
 
-      expect(result.status, result.stderr).toBe(0)
-      expect(gitResult(fixture, fixture.main, ['config', '--get', 'extensions.worktreeConfig']).status).toBe(1)
-      expect(git(fixture, fixture.main, ['config', '--get', 'core.repositoryFormatVersion'])).toBe('0')
-      expect(existsSync(hooksPath(fixture, fixture.main))).toBe(false)
-      expect(existsSync(join(common, 'config.worktree'))).toBe(false)
-    })
-  }
+    expect(result.status, result.stderr).toBe(0)
+    expect(gitResult(fixture, fixture.main, ['config', '--get', 'extensions.worktreeConfig']).status).toBe(1)
+    expect(git(fixture, fixture.main, ['config', '--get', 'core.repositoryFormatVersion'])).toBe('0')
+    expect(existsSync(hooksPath(fixture, fixture.main))).toBe(false)
+    expect(existsSync(join(common, 'config.worktree'))).toBe(false)
+  })
 
   it('isolates main and linked worktrees without changing legacy common hooks', async () => {
     const fixture = createFixture()

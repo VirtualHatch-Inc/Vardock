@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Codex local",
+    "description": "Usa la sesión local de la CLI de Codex para enviar solicitudes al modelo."
+  }
+}

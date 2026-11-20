@@ -31,6 +31,7 @@ function stubAgent(rawId: string, overrides: Partial<Agent> = {}): Agent {
     status: 'idle',
     ctx,
     send: () => {},
+    wake: () => {},
     followup: () => {},
     steer: () => {},
     inject: () => {},

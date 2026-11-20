@@ -9,14 +9,11 @@
   en: 8e99640e4936332d
   zh: 729d5de1e0ad2869
 /python-contributor-workflows/validate-the-sdk:
-  en: ad4d61dccf2756a4
-  zh: 9365affc91287738
+  en: 8c685eaf94d04b35
+  zh: 7372b5e7b514aefb
 /python-contributor-workflows/run-against-node-source:
   en: 940c941d189a8248
   zh: 321f5183383d4a12
 /python-contributor-workflows/build-distributions:
-  en: 4aa941562dba5482
-  zh: 50543a92b3d0cf04
-/python-contributor-workflows/validate-a-release-candidate:
-  en: dd3298f2b221451f
-  zh: 8dad5bf59caa2636
+  en: 5859fcd601328722
+  zh: 1d21890eadd18ffe

@@ -27,6 +27,8 @@ Use the **Plugins** entry in the Web sidebar to manage the profile's installed b
 <a id="use-this-package"></a>
 ## Use this package
 
+When the Host configures `plugin-manager` with `management: fixed`, the page retains contributed configuration pages and tabs but offers no bundle catalog or add, install, update, enable or disable controls; the read-only inventory in Settings remains available.
+
 Below 768px, the page uses 20px horizontal insets to align with the conversation header.
 
 [Ralph loops](../../experimental/ralph-bundle/README.md) and [Session search](../../experimental/session-search/README.md) remain bundled but are hidden from both plugin lists unless the profile enables or separately installs them. Existing selections remain manageable; switching off an installation-carried copy hides it again. Enter either exact package name in **Add plugin**, then choose **Enable now** to use the shipped copy without downloading it again. Sidebar session search is independent. LiveShare declares the same default-hidden intent in its bundle manifest (`dsh.bundle.listedByDefault: false`), so it stays out of both lists, including **More**, until a declared row runs or it is enabled. The page's manifest rule is generic: a bundle whose manifest does not declare `listedByDefault: false` is listed; one that does is listed only when the profile enables it, the installation carries it selected, or one of its declared rows runs; a hidden bundle is not opened by its ID either.
@@ -87,6 +89,8 @@ A row's switch on the bundle's page calls `pluginManager.setPluginEnabled`, whic
 ### Configuration pages
 
 A plugin that carries its own configuration renders it on this page rather than in Settings, through three slots the page declares: `plugins.item` (list) for an official plugin, listed in Built-in plugin settings by its `label`; `plugins.bundle.config` (keyed by the bundle's package name) for a bundle's own configuration, shown on the bundle's page between its description and its rows; and `plugins.row.config` (keyed by `<package name>#<row id>`) for one row's configuration, which gives that row a **Configure** control opening the row's page. The page renders `view: 'page'` for forms with their own save controls. Official plugin cards also render `view: 'summary'` under the title; a row's detail page uses that view only when its package description is absent. Only a save writes: the page draws the title, icon, and crumb, and the entry's form drops its staged edits when the page is left. The four host-plane pages the installation ships — the shell executor, the agent loop, Subagent, and the DeepSeek search provider — come from one companion package each, [ui-settings-shell](../ui-settings-shell/README.md), [ui-settings-agent-loop](../ui-settings-agent-loop/README.md), [ui-settings-subagent](../ui-settings-subagent/README.md), and [ui-settings-web-search](../ui-settings-web-search/README.md), registered while the Host serves their namespaces. A bundle's browser half registers the same way:
+
+Contributors can open their page directly with `pluginNavigation.openItem(id)`, including under fixed management.
 
 ```tsx ignore-check
 ctx.slots.inject('plugins.row.config', () => ctx.slots.register({

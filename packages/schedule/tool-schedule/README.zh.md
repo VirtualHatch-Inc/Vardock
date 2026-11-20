@@ -50,7 +50,11 @@ kind: "package-reference"
 - name: '@deepseek-ai/dsh-tool-schedule'
 ```
 
-本包不声明任何 `Config` 字段。它注入 `ctx.tools` 和 `ctx.systemPrompt`，并在作用域解析到宿主 `ctx.schedule` 服务后注册这四个工具及其共享指导，因此保持该服务关闭的组合不会挂载任何 Schedule 工具。每次调用都代表派发该调用的 Agent 执行。
+| 字段 | 默认值 | 含义 |
+|---|---|---|
+| `callerTargetOnly` | `false` | `true` 把 `schedule_list`、`schedule_view` 与 `schedule_edit` 限定为已存储目标投递到调用方 Session 的任务。其他任务读作 `schedule_not_found`；未提供 `expectedUpdatedAt` 的编辑使用其检查时读取的修订。 |
+
+它注入 `ctx.tools` 和 `ctx.systemPrompt`，并在作用域解析到宿主 `ctx.schedule` 服务后注册这四个工具及其共享指导，因此保持该服务关闭的组合不会挂载任何 Schedule 工具。每次调用都代表派发该调用的 Agent 执行。
 
 -----
 
@@ -140,7 +144,7 @@ Native 和 PTC 模式下，每次组装 prompt 只加入一句固定文本。同
 
 - **没有宿主服务就没有工具** —— 在缺少 `ctx.schedule` 的组合中挂载本包会让插件保持挂起，四个工具都不会注册。
 - **每次调用都需要调用方 Agent** —— 未携带 Agent 的派发返回 `internal_error`，而不会猜测某个 Session。
-- **每个工具都能触及宿主的全部任务** —— `schedule_list` 返回其他 Session 创建的任务，`schedule_view` 与 `schedule_edit` 按 id 读取、改变和删除任意任务。授权说明约束模型行为；宿主不校验用户意图，也不增加按 Session 的归属检查。不应管理宿主任务的 agent 所用 preset 应省略这一行。
+- **每个工具都能触及宿主的全部任务** —— `schedule_list` 返回其他 Session 创建的任务，`schedule_view` 与 `schedule_edit` 按 id 读取、改变和删除任意任务。授权说明约束模型行为；宿主不校验用户意图。不应管理宿主任务的 agent 所用 preset 应省略这一行；只管理自身投递的 agent 所在组合应设置 `callerTargetOnly`。
 - **删除不会撤回已排队的消息** —— 宿主已经投递的消息在 `schedule_edit` 删除之后仍留在目标 Session 收件箱中。
 - **任务时间由宿主负责** —— 这些工具不提供时钟来源、投递重试或执行结果；这些限制属于该服务。
 - **每个工具都拒绝被委派的调用方** —— 四个工具都会在调用服务之前读取调用方 Agent 的委派深度，当该深度大于零时返回 `{ code: 'subagent_session', message: 'A delegated subagent cannot use scheduled tasks.' }`。该守卫位于本包内，读取来自 `@deepseek-ai/dsh-subagent` 的 `delegationDepthOf`，即委派封顶本身执行的同一份记账，因此在任何挂载这些工具的 preset 下都成立。

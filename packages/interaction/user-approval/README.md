@@ -25,7 +25,7 @@ Use this package to require a one-shot decision before a sensitive tool action p
 <a id="use-this-package"></a>
 ## Use this package
 
-Compose this service when sensitive tool actions should pause for a human or machine decision instead of running unconditionally. It requires `sessionProjections`; shipped profiles already provide that service. The tools pipeline and the sandboxed bash tool route their `ask` decisions through this seam and fail closed when it is absent, so interactive deployments mount it with at least one answerer.
+Compose this service when sensitive tool actions need a human or machine decision. It requires `sessionProjections`; `requestBackground` also reads the optional `sessions` service and rejects without it. Shipped profiles provide both. The tools pipeline and the sandboxed bash tool route their `ask` decisions through this seam and fail closed when it is absent, so interactive deployments mount it with at least one answerer.
 
 ### Composing answerers
 
@@ -50,7 +50,9 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### Requesting a decision
 
-`request(req)` names the agent, tool, optional call id and reason, and an abort signal. Optional `displayReason` supplies localized presentation text without changing the logged reason. It requires an open turn: an idle or between-turn caller throws before auditing anything. Aborting withdraws the question — the request settles `cancelled` and a late answer is discarded. A failure that prevents either audit append from committing rejects instead of returning an unlogged decision.
+`request(req)` asks during the requesting agent's open turn. For a background operation, use `requestBackground(req)` to ask through the answering agent's Session even when it is idle. The caller supplies a live Session with an active persistence writer. The service flushes the ask before dispatch and the decision before returning. It rejects on audit or checkpoint failure, or when no checkpoint listener is available.
+
+Supply the operation in `reason` for the audit log. `displayReason` supplies a localized title, and `detail` supplies plain text for standalone operations without a correlated tool call. Aborting a pending question records `cancelled` and discards a late answer. An audit append failure rejects the request.
 
 ### What the model and user see
 
@@ -75,7 +77,7 @@ The observable behavior is covered in [Use this package](#use-this-package); thi
 
 ### Dispatch
 
-`decide()` races the answerer waterfall against the request signal and contains every answerer failure: a throwing listener fails the question closed to `unavailable`, and a rogue non-vocabulary return is normalized to `unavailable`. The `never` policy is enforced inside the service before waterfall dispatch, so a listener registered later with `prepend` cannot bypass the deterministic rejection. The request must be turn-enclosed because the turn is the durable log's commit/replay boundary — a bare event between turns is indistinguishable from a crash tail.
+Both request methods race the answerer waterfall against the request signal and convert throwing answerers and invalid outcomes to `unavailable`. The service enforces the `never` policy before waterfall dispatch, including when an answerer registers with `prepend`.
 
 ### Policy and the runtime-context snapshot
 
@@ -87,7 +89,7 @@ The system-prompt contribution `approval:policy` states the complete current mea
 
 ### Audit
 
-`request()` appends `approval/asked` with the request identity and tool, then `approval/decided` with the closed outcome; the exact appended fields live in [`src/index.ts`](src/index.ts). Both are log-only.
+Both methods append `approval/asked` and a matching `approval/decided` to the answering Session. The audit events stay out of model history. The caller owns any separate operation authorization record. [Audit implementation](src/index.ts)
 
 </details>
 
@@ -161,9 +163,8 @@ Append-only; newly visible content follows the reusable request prefix and does 
 
 These limits define when the seam is a poor fit or needs special composition care. They are current package constraints, not a general permission comparison.
 
-- **Requests are valid only inside an open turn** — an idle or between-turn caller throws before auditing; a durable out-of-turn approval workflow is deferred.
 - **Only one-shot grants exist** — the outcome vocabulary has `allowed-once` but no `allow-always`, remembered rule, revocation, or grant store; session policy is only `ask` / `never`.
-- **The request carries no tool arguments** — an answerer sees the tool name, reason, and optional call id; the ACP machine channel requires a call id and delegates requests without one.
+- **ACP requires a tool call id.** It delegates standalone requests without one.
 - **No built-in answerer** — headless or incompletely composed deployments resolve `unavailable` and fail closed; the service itself never prompts a human.
 - **Pending approvals are process-local** — checkpoints restore policy and turn state, not pending answerer promises or one-shot grants. Recovery does not resubmit questions or repeat runtime effects.
 

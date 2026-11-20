@@ -1,5 +1,5 @@
 /**
- * Method-level access control contracts: actions, roles, bindings, policies,
+ * Method-level access control contracts: actions, roles, bindings, policies, guards,
  * decision requests, and the access snapshot stream.
  * @module @deepseek-ai/dsh-api-remote-access/types
  */
@@ -76,11 +76,20 @@ export interface RemoteAccessRequest<P extends Principal> {
    */
   readonly resources: readonly RemoteAccessResource[]
   /**
-   * Named arguments of a concrete call, validated against their Typert-compiled types
-   * with lookup parameters as wire identities; absent for events, snapshots, and list filtering.
+   * Named arguments of a concrete call. JSON values have passed their Typert
+   * codecs. Lookup and Context identities retain their wire values. Absent
+   * for events, snapshots, and list filtering.
    */
   readonly args?: Readonly<Record<string, unknown>>
 }
+
+/**
+ * Refuse a Remote endpoint call or result item synchronously for any principal.
+ * Read the request and current policy state without mutating either.
+ * @param request - caller, endpoint, resources, and validated arguments when checking a call.
+ * @returns a public refusal reason, or `undefined` to leave the access decision to other checks.
+ */
+export type RemoteAccessGuard = (request: RemoteAccessRequest<Principal>) => string | undefined
 
 /**
  * Business rules for one non-owner principal kind. Every member answers
@@ -88,8 +97,8 @@ export interface RemoteAccessRequest<P extends Principal> {
  */
 export interface RemoteAccessPolicy<P extends Principal> {
   /**
-   * List the principal's bindings. Called once per `decide()`, once per
-   * `allows()`, and once per snapshot computation; never cached.
+   * List the principal's bindings. Called once per policy check and once per
+   * snapshot computation; never cached.
    * @param principal - non-owner caller of this policy's kind.
    * @returns every binding the principal holds now.
    */
@@ -103,14 +112,13 @@ export interface RemoteAccessPolicy<P extends Principal> {
   explain?(request: RemoteAccessRequest<P>): string | undefined
 }
 
-/** Details of a refused non-owner call. */
+/** Details of a refused Remote call. */
 export interface RemoteAccessDeniedDetails {
   /** Canonical `<namespace>/<method>` endpoint of the refused call. */
   readonly action: string
   /**
-   * A condition's or `explain()`'s reason, `no-allow`, or `policy-failed`;
-   * the Gateway refuses a call whose resources are invalid with
-   * `resource-invalid` before `decide()` is asked.
+   * A guard, condition, or `explain()` reason, or `no-allow`, `policy-failed`,
+   * or `guard-failed`. The Gateway reports `resource-invalid` before `decide()`.
    */
   readonly reason: string
 }
@@ -121,11 +129,11 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   }
 }
 
-/** The endpoint actions one principal may call on one resource. */
+/** One principal's policy grants on one resource. */
 export interface RemoteAccessGrant {
   readonly resource: RemoteAccessResource
   /**
-   * Endpoint actions allowed on this resource without call arguments, sorted;
+   * Endpoint actions granted by policy without call arguments, sorted;
    * plain strings because Typert generates no codec for template literal types.
    */
   readonly actions: readonly string[]

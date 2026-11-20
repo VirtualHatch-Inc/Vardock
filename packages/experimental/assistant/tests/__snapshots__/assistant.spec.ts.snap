@@ -1,0 +1,15 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`assistant delegation > records a completed report whose external requests are settled 1`] = `"Published evidence"`;
+
+exports[`assistant delegation > records a completed report whose external requests are unreadable 1`] = `
+"The authority could not be read (authority-unavailable). We cannot confirm whether this work made any outside requests or what their results were. An outside request may or may not have taken effect. Tell the owner about this uncertainty. Do not send these requests again without the owner's direction. Inspect them with inspect_business_operations.
+
+Worker report (completed): Published evidence"
+`;
+
+exports[`assistant delegation > records a completed report whose external requests are unresolved 1`] = `
+"The script ran, but the outside request's result is unknown. It may or may not have taken effect. Unresolved operations: [operation]. Tell the owner about this uncertainty. Do not send these requests again without the owner's direction. Inspect them with inspect_business_operations.
+
+Worker report (completed): Published evidence"
+`;

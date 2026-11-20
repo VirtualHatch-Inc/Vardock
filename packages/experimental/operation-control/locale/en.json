@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Operation authority",
+    "description": "Authorize isolated shell and Local Codex operations against a shared budget."
+  }
+}

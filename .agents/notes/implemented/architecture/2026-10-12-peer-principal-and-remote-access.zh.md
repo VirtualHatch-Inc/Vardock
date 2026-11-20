@@ -139,7 +139,7 @@ export function principalOf(invocation: RemoteInvocation | undefined): Principal
 |---|---|---|
 | principal | Subject / Principal | 调用方身份，`PrincipalMap` 的一个条目 |
 | Peer | Session（RBAC 会话） | principal 的一条连接；一个 principal 对应 N 个 Peer |
-| owner | 超级用户 | 跳过全部检查 |
+| owner | 已认证的本地用户 | 经过端点 guard，无需 policy binding |
 | action | Action / Permission | Remote 端点 `ns/method`，或转发事件 `event:<name>`；Gateway 内部仍称端点 |
 | resource | Resource / Object | `{ kind: 'global' }`，或某个已声明资源种类的 `{ kind, id }` |
 | role | Role | 限定一种资源种类的 action 集合，是业务包的普通值 |
@@ -249,7 +249,7 @@ export function RemoteScope<This extends object, Args extends unknown[], Result>
 | `session/projections` | session：`args.request.sessionId` | 默认 resolver | 否 |
 | `session/page` | session：Session 地址读 `args.request.address.sessionId`；subagent 地址读 `args.request.address.childSessionId` | 默认 resolver | 否 |
 | `session/follow` | 同上 | 默认 resolver | 否 |
-| `remoteAccess/follow` | `global` | 无资源；remote-access 对任何 principal 放行 | 否 |
+| `remoteAccess/follow` | `global` | 无资源。任意 principal 均检查端点 guard，无需 policy binding | 否 |
 
 对于 `session/attachment`，`sessionId` 指定 Gateway 检查的资源，不限制可读取哪张图片。该检查放行后，图片可以属于其他 Session 或不属于任何 Session，处理函数也不检查请求中的 Session 是否存在。policy 作者必须把此 action 视为整个附件存储的读取权限，具体规则见[图片访问规则](2026-10-23-store-scoped-image-reads.zh.md)。
 
@@ -326,9 +326,9 @@ class RemoteAccessService {            // ctx.remoteAccess; Remote namespace rem
 
 | 规则 | 内容 |
 |---|---|
-| owner | Gateway 对 owner 不解析资源、不调用 `decide()`，也不读取任何 policy |
+| owner | Gateway 为 owner 解析资源并调用 `decide()`。端点 guard 先检查，随后 owner 无需 policy binding |
 | 注册 | `registerPolicy(kind, policy)` 返回 disposer，业务包在 `ctx.effect()` 中调用。每个非 owner principal kind 至多一个 policy，同一 kind 重复注册抛错；`bindings()` 与 `explain()` 收到的 principal 按 kind 定型 |
-| 内置放行 | `remoteAccess/follow` 对任何 principal 放行，每个 Peer 都能读自己的快照 |
+| 内置放行 | 每个 Peer 通过端点 guard 后，可经 `remoteAccess/follow` 读取自己的快照，无需 policy binding |
 | 判定 | 没有该 principal kind 的 policy 以 `no-allow` 拒绝。否则取 `bindings(principal)`，对请求的每个资源线性扫描找一个 binding：资源相等（`kind` 相同，且非 `global` 时 `id` 相同）、role 的 `actions` 含该 action、没有 condition 或 condition 放行；每个资源都找到才放行（AND）。condition 只对资源相等且 role 含该 action 的 binding 调用 |
 | 拒绝原因 | 第一个未被放行的资源决定原因，优先级为：该资源上存在匹配 binding 但其 condition 全部拒绝时，取第一个 condition 的原因；否则取 `explain(request)` 的返回值；没有 `explain` 或其返回 `undefined` 时为 `no-allow`。`explain` 只在结论已为拒绝后调用，不改变结论 |
 | 失败隔离 | `bindings()`、condition 或 `explain()` 抛错时，本次判定以 `policy-failed` 拒绝；计算快照时 `bindings()` 抛错即该 principal 没有 grant，condition 抛错即该 action 不放行。有问题的规则因此不会破坏共享的 `$events` 事件源、快照流或页面渲染；每次 `invalidate()` 或 policy 变更之后，每个 policy 的第一次失败只记录一次日志 |
@@ -393,11 +393,10 @@ const childPrompt = child => ({ action, args }) =>
 |---|---|---|
 | 1 | 准入得到 Peer：网络路径由 Connection `admit()` 给出（`browserPeer`）；进程内路径由调用方传入。Gateway 在读取 wire payload 之前检查 `peer.signal` | 网络准入失败返回 HTTP 401 / 403（不进入 Gateway）；Peer 已 dispose：`gateway/peer-disposed` |
 | 2 | 解析端点并做参数字段集校验（`resolveDescriptor`、`assertExactArguments`），再按 Typert 编译类型校验 JSON 参数，每个参数解码一次 | `gateway/invocation-unavailable`、`gateway/ambiguous-endpoint`、`gateway/definition-unavailable`；字段多余或缺失：`gateway/arguments-invalid`；JSON 参数校验失败：`gateway/input-invalid`（owner 与非 owner 相同，先于访问检查） |
-| 3 | owner 直通：`principal.kind === 'owner'` 时直接进入第 5 步 | — |
-| 4 | 非 owner：Gateway 从第 2 步校验后的参数解析资源（`resources` 读取函数、其次 lookup 参数与 Context 声明的 `resource`、再次注册的默认字段或 resolver；lookup 与 Context 身份取 wire 身份，不解析 lookup 与 Context），再以校验后的参数为 `args` 询问 `remoteAccess.decide({ principal, action: endpoint, resources, args })`；资源非法时不询问 `decide()`，直接以 `resource-invalid` 拒绝；`deny` 结论变为抛出的错误 | `remote-access/denied`，details `{ action, reason }` |
-| 5 | 分派：`resolveReceiverContext`（可能激活 Agent）、lookup 解析（JSON 参数复用第 2 步的值）、调用方法 | 既有错误码不变，如 `gateway/lookup-not-found`、`gateway/context-not-found`、`gateway/input-invalid`、`gateway/service-unavailable`、`gateway/method-unavailable` 与业务错误 |
+| 3 | Gateway 从第 2 步校验后的参数解析资源（`resources` 读取函数、其次 lookup 参数与 Context 声明的 `resource`、再次注册的默认字段或 resolver；lookup 与 Context 身份取 wire 身份，不解析 lookup 与 Context），再以校验后的参数为 `args` 询问 `remoteAccess.decide({ principal, action: endpoint, resources, args })`；资源非法时不询问 `decide()`，直接以 `resource-invalid` 拒绝；`deny` 结论变为抛出的错误 | `remote-access/denied`，details `{ action, reason }` |
+| 4 | 分派：`resolveReceiverContext`（可能激活 Agent）、lookup 解析（JSON 参数复用第 2 步的值）、调用方法 | 既有错误码不变，如 `gateway/lookup-not-found`、`gateway/context-not-found`、`gateway/input-invalid`、`gateway/service-unavailable`、`gateway/method-unavailable` 与业务错误 |
 
-鉴权（第 3–4 步）位于 lookup 与 Context 解析之前，未授权调用不会激活会话或产生其他副作用。Gateway 新增的错误码只有 `gateway/peer-disposed`；拒绝码 `remote-access/denied` 由 remote-access 声明。
+鉴权位于 lookup 与 Context 解析之前，被拒绝的调用不会激活会话或进入业务方法。Gateway 新增的错误码只有 `gateway/peer-disposed`；拒绝码 `remote-access/denied` 由 remote-access 声明。
 
 Gateway 自有端点：非 owner 可订阅 `$events`，但从不收到需要回答的 waterfall 帧；`$events/result` 对非 owner 以既有的 `gateway/invocation-unavailable` 拒绝；两者都做第 1 步的检查。
 
@@ -418,7 +417,7 @@ Gateway 自有端点：非 owner 可订阅 `$events`，但从不收到需要回�
 <a id="list-and-aggregate-methods"></a>
 #### 列表与聚合方法
 
-列表、分页与聚合类方法的调用解析为 `global`，由 `global` 级 role 放行；方法内部对每一项调用 `this.ctx.remoteAccess.allows(resource)`，判定当前调用的 action 在该资源上是否被授权（不带 args）。因此列表类 action 同时出现在 `global` 级 role（放行调用）与资源级 role（放行逐项）中：`session/list` 在 `global` 上被授权才能调用，每个会话行还要求 `session/list` 在该会话上被授权。`allows()` 读访问该服务的 Context 上的 invocation，owner 与 Remote 调用之外的进程内代码恒为 true，不过滤。
+列表、分页与聚合类方法的调用解析为 `global`，由 `global` 级 role 放行；方法内部对每一项调用 `this.ctx.remoteAccess.allows(resource)`，判定当前调用的 action 在该资源上是否被授权（不带 args）。因此列表类 action 同时出现在 `global` 级 role（放行调用）与资源级 role（放行逐项）中：`session/list` 在 `global` 上被授权才能调用，每个会话行还要求 `session/list` 在该会话上被授权。`allows()` 读访问该服务的 Context 上的 invocation，Remote 调用之外的进程内代码得到 true。Remote 调用检查端点 guard，非 owner 还需检查 policy binding。
 
 | 方法 | 过滤对象 |
 |---|---|
@@ -450,7 +449,7 @@ export const REMOTE_ACCESS_SNAPSHOT_KEY = '__DSH_REMOTE_ACCESS__'
 |---|---|
 | 首份快照 | `snapshotFor(principal)` 计算页面打开时的 baseline。webServer 按页面所代表的 Peer 渲染 index，`webserver/index-inject` 把该 Peer 传给监听方；remote-access 为每个 index 加入全局变量 `REMOTE_ACCESS_SNAPSHOT_KEY`，值为 `snapshotFor(peer.principal)`，owner 页面因此得到 owner baseline `{ type: 'baseline', owner: true }`，为非 owner Peer 渲染的页面（例如 owner Host 上的 liveshare 读者页）得到该 principal 的 grant。Client 在挂载时读取该全局变量 |
 | 订阅 | 每个 Peer 订阅一条访问快照流，其 baseline 取代注入的快照 |
-| 计算 | 取该 principal kind 的 policy 的全部 binding，按资源相等归并；每个资源的 `actions` 为这些 binding 的 role 中、经与调用相同的判定（单个资源、不带 args，condition 以无 args 调用）放行的端点 action；只为至少放行一个端点 action 的资源给出 grant。判定与快照同源：同一 principal、action 与资源（不带参数）上，快照答案与 `decide()` 一致 |
+| 计算 | 取该 principal kind 的 policy 的全部 binding，按资源相等归并；每个资源的 `actions` 为这些 binding 的 role 中、由 policy 在无参数时放行的端点 action。只为至少放行一个端点 action 的资源给出 grant。端点 guard 检查实际调用与列表项 |
 | 只含端点 action | `event:<name>` action 不进入快照；前端只据端点 action 决定入口显隐 |
 | 增量 | `invalidate()` 或 policy 注册、撤回时重算并推送 `upsert` / `remove`，放行集合变空的资源推送 `remove`；未变化的资源不推送 |
 | 生命周期 | 一代快照流在其 signal abort 或 remote-access 服务卸载时结束，因此重载后的服务从新的 baseline 回答每个读者；Client 把结束视为载体中断并重连 |
@@ -566,7 +565,7 @@ GlobalStandardProps.useWorkspaceAccess: (workspaceId: WorkspaceId, action: Remot
 ### 与现有 Note 的关系
 
 - [Remote 双工流](../../implemented/architecture/2026-09-19-remote-duplex-stream.zh.md)：部分 supersede。被替换的部分包括：「Peer 不记录身份与权限」「本 Host 只有一个 Peer：operator」「in-process carrier 不给 Peer 即 operator」，以及其替代方案中「Access 机制属于业务语义」的表述；其余（双工流、uplink、`ctx.invocation` 绑定）保持。两篇保持 active 并互链，该 Note 的现行事实已同步更新。
-- [浏览器 token 认证](../../implemented/architecture/2026-08-24-browser-token-authentication.zh.md)：不受影响。该 Note 否决「按方法区分特权」针对的是 owner 的认证；通过认证的浏览器仍是 owner 且不受方法级检查。
+- [浏览器 token 认证](../../implemented/architecture/2026-08-24-browser-token-authentication.zh.md)：不受影响。该 Note 否决「按方法区分特权」针对的是 owner 的认证；通过认证的浏览器使用 owner principal，无需 policy binding。
 - [Typert Remote 方法调用](../../implemented/architecture/2026-08-02-typert-remote-method-calls.zh.md)：不受影响；`@Remote` 与 `@RemoteScope` 增加可选的 `resources` 读取函数（`@RemoteScope` 的第二个参数可为 `{ name?, resources? }`），只供 Gateway 的访问检查读取，不改变端点命名、调用模式与生成物。
 - [生产方拥有的消息来源](../../implemented/architecture/2026-09-09-producer-owned-message-sources.zh.md)：不受影响；`principal` 由构造 source 的生产者写入。
 
@@ -634,16 +633,16 @@ GlobalStandardProps.useWorkspaceAccess: (workspaceId: WorkspaceId, action: Remot
 | 所有调用路径显式给出 Peer | `InvokeRemoteRequest.peer`、`wireStream.open` 的 peer、`fetch(request, peer)`、`bridge` 的 peer 为 required；Gateway 中不存在兜底；`/api` 路由传递 `admission.peer` | typecheck、Connection host spec |
 | 浏览器连接与 `createPeer()` | `browserPeer` 的 principal 为 owner；`createPeer()` 每次返回独立 Peer，随读取 Connection 的 Context 释放；exact route 对非 owner 返回 403 | Connection host spec |
 | 已 dispose 的 Peer | 之后的 unary、stream 与 `$events` 分派以 `gateway/peer-disposed` 拒绝，wire payload 畸形时亦然；其名下 stream 结束；运行中的 unary 完成；不影响其他 Peer | Gateway host spec |
-| 鉴权顺序 | owner 调用任何方法照常分派且不读取 policy；没有 role 列出的方法对非 owner 以 `remote-access/denied`（`no-allow`）拒绝；访问检查早于 lookup，被拒调用不激活会话 | Gateway host spec |
+| 鉴权顺序 | owner 调用经过端点 guard，无需读取 policy；没有 role 列出的方法对非 owner 以 `remote-access/denied`（`no-allow`）拒绝；访问检查早于 lookup，被拒调用不激活会话 | Gateway host spec |
 | policy 注册 | 每个非 owner principal kind 一个 policy，重复注册抛错；disposer 撤回后该 kind 以 `no-allow` 拒绝；随 fiber 撤回 | remote-access host spec |
-| 判定 | 每个资源都需要匹配的 binding（AND）；role 不含该 action、资源不相等或 condition 拒绝都不放行；拒绝原因按 condition > `explain` > `no-allow` 取；`explain` 不改变结论；condition 在调用时收到 args，在快照与列表过滤时不收；`bindings()`、condition 或 `explain()` 抛错以 `policy-failed` 拒绝，每个 policy 在两次 `invalidate()` 之间只记录一次日志，事件路径上 owner 流与共享事件源照常；`remoteAccess/follow` 对任何 principal 放行 | remote-access host spec、Gateway host spec |
+| 判定 | 每个资源都需要匹配的 binding（AND）；role 不含该 action、资源不相等或 condition 拒绝都不放行；拒绝原因按 condition > `explain` > `no-allow` 取；`explain` 不改变结论；condition 在调用时收到 args，在快照与列表过滤时不收；`bindings()`、condition 或 `explain()` 抛错以 `policy-failed` 拒绝，每个 policy 在两次 `invalidate()` 之间只记录一次日志，事件路径上 owner 流与共享事件源照常；`remoteAccess/follow` 对所有 principal 都检查端点 guard | remote-access host spec、Gateway host spec |
 | 资源解析 | 默认字段或 resolver 得到一个资源，默认 resolver 返回数组为非法；声明了该种类 `resource` 的 lookup 参数得到其 wire 身份；Context 方法从 args 中的 Agent Context 身份得到其 session 资源且不激活 Agent，另可经 `resources` 声明其他资源；`resources` 读取函数覆盖该种类，数组为多个资源，`undefined` 为无；都没有为 `[global]`；抛错、空数组或非非空字符串（含 Context 身份）为非法，Gateway 以 `resource-invalid` 拒绝且不询问 `decide()`；未声明 `resource` 的 Context 按普通规则解析；资源与 `args` 读取校验后的参数，只有编译 codec 才移除未声明字段，JSON 参数校验失败在访问检查前返回 `gateway/input-invalid` | Gateway host spec（gateway-access） |
 | 资源注册表 | `typert.resources` 每个种类登记一个默认字段或 resolver，拒绝重复登记与 `global`，并随 fiber 撤回；配置的 lookup resolver 保留 provider 的 `resource`；Host Context adapter 保留其 `resource` | typert-registry spec |
 | 转发事件 | 非 owner 的 `$events` 流只在 `event:<name>` 于其资源上被授权时整条收到事件；未声明资源的事件按 `global` 判定；读取函数返回 `undefined` 的事件不送达非 owner，且不询问 `decide()`；owner 全部收到 | Gateway host spec（gateway-access） |
 | 首份快照 | `snapshotFor()` 返回 owner baseline 或该 principal 的 grant；remote-access 为每个 index 注入其所代表 Peer 的快照；Client 从注入的 baseline 起步并拒绝格式错误的快照 | remote-access host 与 client spec |
 | 类型推断 | `resources` 读取函数的参数类型从方法推断；lookup 位为 wire 类型；访问不存在的属性、参数多于方法参数与 `global` 键编译失败；binding 的资源种类与 role 不符编译失败 | typert-protocol spec、remote-access spec（类型测试） |
-| 列表过滤 | `session/list`、`session/search`、`session/control`、`workspace/follow` 对非 owner 只返回 `allows()` 为 true 的项；已下发工作区失去可见性时 `workspace/follow` 发送 `replace` 增量帧，访问恢复后该工作区重新出现；owner 结果不变 | session-controller / workspace-controller host spec |
-| 访问快照 | 快照中的允许集合与 Host 对同一 principal、action、资源（不带参数）的判定一致；只含端点 action；没有放行 action 的资源不出 grant，放行集合变空时推送 `remove`；`invalidate()` 与 policy 注册、撤回后推送增量；被变化结束的等待不残留 abort 监听器；卸载服务即结束所有打开的快照流；owner 只收 `{ owner: true }` | remote-access host spec |
+| 列表过滤 | `session/list`、`session/search`、`session/control`、`workspace/follow` 对非 owner 只返回 `allows()` 为 true 的项；已下发工作区失去可见性时 `workspace/follow` 发送 `replace` 增量帧，访问恢复后该工作区重新出现；端点 guard 也会过滤 owner 的结果 | session-controller / workspace-controller host spec |
+| 访问快照 | 快照中的允许集合来自省略调用参数时的 policy 授权；只含端点 action；没有放行 action 的资源不出 grant，放行集合变空时推送 `remove`；`invalidate()` 与 policy 注册、撤回后推送增量；被变化结束的等待不残留 abort 监听器；卸载服务即结束所有打开的快照流；owner 只收 `{ owner: true }` | remote-access host spec |
 | access hooks | `source()`、`useRemoteAccess`、`useAccess`、`useSessionAccess`、`useWorkspaceAccess` 与快照一致；会话资源上的 `useAccess` 读本会话答案；owner 为 true；没有快照或快照流失败的非 owner 为 false；hook 不发请求 | remote-access client spec、ui-session / ui-workspace client spec |
 | keyed hook 双参数 | 第二个参数为字符串时读取 `(key, member)` source；既有调用形式不变 | ui-renderer client spec |
 | 非 owner 分派 `session/prompt` | 落盘 user 消息 `source.principal` 等于该 principal；冷恢复后仍读到同一值 | session-controller host spec |

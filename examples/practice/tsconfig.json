@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "noEmit": true, "composite": false, "rewriteRelativeImportExtensions": false },
+  "include": ["service.ts", "tests/**/*.ts"],
+  "references": [
+    { "path": "../../vendor/cordis" },
+    { "path": "../../vendor/include" },
+    { "path": "../../packages/boot/app-boot" },
+    { "path": "../../packages/test-support/loader-smoke" },
+    { "path": "../../packages/experimental/operation-control" },
+    { "path": "../../packages/experimental/operation-evidence" },
+    { "path": "../../packages/core/session" }
+  ]
+}

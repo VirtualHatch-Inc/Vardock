@@ -406,6 +406,31 @@ export interface SearchLimits {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-api-workspace-files -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-assistant -->
+<a id="deepseek-aidsh-assistant"></a>
+
+## `@deepseek-ai/dsh-assistant`
+
+- `inject`: `agents` · `sessions` · `sessionController` · `sessionPersistence` · `sessionProjections` · `sessionQuery` · `attachments` · `storageDomain` · `tools` · `permissionPresets` · `sessionTitle` · `remoteAccess` · `workspaceRegistry` · `handoffControl` · `llm` · `systemPrompt` · `approval`
+- `source`: [`packages/experimental/assistant/src/index.ts:106`](../packages/experimental/assistant/src/index.ts)
+
+```ts config-catalog
+/** Deployment selection for the single assistant entry. */
+export interface Config {
+  /** Stable ordinary Session used as the assistant entrance. */
+  mainSessionId?: string
+  /** Maximum simultaneous work Sessions. */
+  maxActive?: number
+  /** Maximum bytes read per work file, bounded by the authority protocol. */
+  maxFileBytes?: number
+  /** Delay between status reads while the owner views the entrance. */
+  workStatusRefreshMs?: number
+  /** Maximum UTF-8 bytes of the notes text one `write_notes` call saves; every entrance request carries the saved notes. */
+  maxNotesBytes?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-assistant -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-attachment-local -->
 <a id="deepseek-aidsh-attachment-local"></a>
 
@@ -953,6 +978,85 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-deepseek-chat-import -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-execution-container -->
+<a id="deepseek-aidsh-execution-container"></a>
+
+## `@deepseek-ai/dsh-execution-container`
+
+- `inject`: `subprocess`
+- `source`: [`packages/experimental/execution-container/src/index.ts:18`](../packages/experimental/execution-container/src/index.ts)
+
+```ts config-catalog
+/** Execution backend and its operator-owned deployment settings. */
+type Config =
+  | (DockerConfig & {
+    /** Run commands with a local Docker daemon. */
+    readonly backend: 'docker'
+  })
+  | (AppleVmConfig & {
+    /** Run commands with an Apple container Linux microVM. */
+    readonly backend: 'apple-vm'
+  })
+
+/** Trusted deployment configuration for Docker execution. */
+export interface DockerConfig extends ExecutionLimits, GatewaySettings {
+  /** Path to a local Docker daemon's Unix socket. */
+  dockerSocket: string
+  /** Preloaded Linux image reference. The image must provide POSIX shell utilities and declare no volumes. */
+  image: string
+  /** Docker executable name or absolute path. */
+  command?: string
+  /** OCI runtime registered with the Docker daemon under this name. */
+  runtime?: DockerRuntime
+  /** Container CPU limit in cores. */
+  cpus?: number
+}
+
+/** Trusted deployment settings for the Apple microVM and its Host gateway. */
+export interface AppleVmConfig extends ExecutionLimits, GatewaySettings {
+  /** Apple container executable name or absolute path. */
+  vmCommand?: string
+  /** Preloaded Linux ARM64 execution image reference. */
+  image: string
+  /** Stable absolute path to the gateway socket in a private Host directory. */
+  gatewaySocket: string
+  /** Approved CONNECT targets in hostname:port form. */
+  allowedTargets?: string[]
+  /** Number of guest container CPU cores. */
+  cpus?: number
+}
+
+/** Operator-configurable execution and resource bounds. */
+export interface ExecutionLimits {
+  /** Milliseconds for preparation and script execution. Stop has a separate budget. */
+  timeoutMs?: number
+  /** Milliseconds allowed for an independent stop and subprocess termination grace. */
+  stopTimeoutMs?: number
+  /** Maximum UTF-8 bytes in a shell script. */
+  maxCommandBytes?: number
+  /** Maximum UTF-8 bytes in a successful tool result. */
+  maxOutputBytes?: number
+  /** Guest container memory limit in MiB. */
+  memoryMiB?: number
+  /** Guest process and thread limit. */
+  pidsLimit?: number
+}
+
+/** Operator-configurable Host gateway that carries broker requests from a guest. */
+export interface GatewaySettings {
+  /** Stable absolute path to the gateway socket in a private Host directory. */
+  gatewaySocket?: string
+  /** Milliseconds without gateway traffic before a connection closes. */
+  gatewayIdleTimeoutMs?: number
+  /** Maximum simultaneous guest connections accepted by the Host gateway. */
+  gatewayMaxConnections?: number
+}
+
+/** OCI runtimes the Docker backend supports. */
+export type DockerRuntime = 'runc' | 'runsc' | 'io.containerd.kata.v2'
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-execution-container -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-api-speech-to-text -->
 <a id="deepseek-aidsh-experimental-api-speech-to-text"></a>
@@ -2002,6 +2106,27 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-jobs-local -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-llm-codex -->
+<a id="deepseek-aidsh-llm-codex"></a>
+
+## `@deepseek-ai/dsh-llm-codex`
+
+- `inject`: `llm` · `subprocess`
+- `source`: [`packages/experimental/llm-codex/src/index.ts:24`](../packages/experimental/llm-codex/src/index.ts)
+
+```ts config-catalog
+/** Deployment settings for the local Codex executable and its process lifetime. */
+export interface Config {
+  /** Codex executable name on PATH or absolute executable path. */
+  command?: string
+  /** Maximum time in milliseconds to obtain one response. */
+  timeoutMs?: number
+  /** Milliseconds between managed process termination stages. */
+  disposeGraceMs?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-llm-codex -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-llm-deepseek-account -->
 <a id="deepseek-aidsh-llm-deepseek-account"></a>
 
@@ -2681,6 +2806,181 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-office-kit -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-operation-broker -->
+<a id="deepseek-aidsh-operation-broker"></a>
+
+## `@deepseek-ai/dsh-operation-broker`
+
+- `inject`: `credentials`
+- `source`: [`packages/experimental/operation-broker/src/index.ts:233`](../packages/experimental/operation-broker/src/index.ts)
+
+```ts config-catalog
+/** Operator configuration for the HTTPS JSON broker. */
+export interface Config {
+  /** Routes available to the authority. */
+  readonly routes: BrokerRouteConfig[]
+  /** Deadline in milliseconds through POST response headers or the complete status response, including credential lookup. */
+  readonly timeoutMs?: number
+  /** Maximum UTF-8 request body bytes. */
+  readonly maxBodyBytes?: number
+  /** Maximum response body bytes returned by a route with `returnResponse`. A larger response is omitted. */
+  readonly maxResponseBytes?: number
+}
+
+/** One operator-configured HTTPS JSON action. */
+export interface BrokerRouteConfig {
+  /** PEM certificate authority file trusted only for this route, including status lookup; read at plugin load. */
+  readonly ca?: string
+  /** Stable action ID supplied by the caller. */
+  readonly action: string
+  /** Usage text shown to the requesting model: what the action does and what its JSON body contains. */
+  readonly description?: string
+  /** Canonical HTTPS endpoint including its path. */
+  readonly endpoint: string
+  /** Canonical same-origin HTTPS endpoint for a read-only status lookup. Omit to disable lookups for this route. */
+  readonly reconciliationEndpoint?: string
+  /** Name of the bearer token in the authority's credential provider. */
+  readonly credentialRef: string
+  /** Return the complete response text to the requesting work environment, where it can reach the model. */
+  readonly returnResponse?: boolean
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-operation-broker -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-operation-control -->
+<a id="deepseek-aidsh-operation-control"></a>
+
+## `@deepseek-ai/dsh-operation-control`
+
+- `inject`: `isolatedExecution`
+- `source`: [`packages/experimental/operation-control/src/index.ts:32`](../packages/experimental/operation-control/src/index.ts)
+
+```ts config-catalog
+/** Operator configuration for one principal's operation grant. */
+export interface Config {
+  /** Fixed operator-assigned identity for callers admitted to the authority socket. */
+  readonly principalId: string
+  /** Fixed operator-assigned identity for the isolated workspace scope. */
+  readonly scopeId: string
+  /** Unix socket to listen on. */
+  readonly socketPath: string
+  /** Unix socket for trusted approval decisions and grant limit edits. Required with Assistant or broker access. */
+  readonly approvalSocketPath?: string | undefined
+  /**
+   * Service names of the mounted broker providers, such as `operationBroker` and `operationBrokerMcp`.
+   * A non-empty list permits approved business requests from a running isolated execution.
+   */
+  readonly broker?: string[]
+  /**
+   * Admit shell proposals without a human decision. Business requests still wait for one.
+   * Requires an execution backend without general network access.
+   */
+  readonly unattendedShell?: boolean
+  /**
+   * Initial broker actions whose matching requests are sent without a human decision. Each action must be in
+   * `assistant.permissions.brokerActions`. A rule with `match` must list its other permitted fields in `allow`.
+   * An action takes at most 64 rules. After the owner's first witnessed edit, the owner's rules replace these; each
+   * action's rules apply only while its broker route digest equals the one they were saved under.
+   */
+  readonly unattendedBrokerActions?: UnattendedAction[]
+  /** Authority-owned SQLite database path on a local filesystem. */
+  readonly databasePath: string
+  /** Unix socket of the separate append-only evidence receiver. */
+  readonly evidenceSocketPath: string
+  /** Initial expiry in UTC epoch milliseconds. Witnessed owner edits take precedence. */
+  readonly grantExpiresAt: number
+  /** Initial lifetime reservation cap across all Sessions. Witnessed owner edits take precedence. */
+  readonly maxOperations: number
+  /** Maximum decoded bytes in one imported file or exported snapshot. */
+  readonly maxFileBytes?: number
+  /** Timeout for incoming request headers and body before admission. */
+  readonly requestTimeoutMs?: number
+  /** Timeout for an independent evidence acknowledgment. */
+  readonly evidenceTimeoutMs?: number
+  /** Permit this one model on the same budget. The authority profile must mount the provider's LLM adapter. */
+  readonly model?: {
+    /** Provider route registered in the authority's LLM runtime, such as `openai` or `codex-local`. */
+    readonly provider: string
+    /** Exact model ID of that provider. */
+    readonly model: string
+    /** Credential reference the provider's adapter reads its API key from. Naming it lets the owner set that key. */
+    readonly credentialRef?: string
+  } | undefined
+  /** Permit the main Assistant Session to release handoffs on the same budget. */
+  readonly assistant?: {
+    /** Exact Session identity that can delegate work and deliver to its user. */
+    readonly mainSessionId: string
+    /** Maximum shell and business permissions a delegation can grant. */
+    readonly permissions: {
+      /** Allow delegations to grant isolated shell execution. */
+      readonly exec: boolean
+      /** Exact broker action IDs that delegations may grant. An empty list permits none. */
+      readonly brokerActions: string[]
+      /** Maximum file-transfer and disclosure permissions. Omission denies these capabilities. */
+      readonly data?: {
+        /** Permit scoped owner files to be imported. */
+        readonly import: boolean
+        /** Permit workspace snapshots to be exported to the owner. */
+        readonly export: boolean
+        /** Permit the work model to receive information from transferred files. */
+        readonly discloseToModel: boolean
+        /** Permit the owner to receive information from transferred files. */
+        readonly discloseToUser: boolean
+        /** Permit business response text to be returned to the work's scripts, and so to the work model. */
+        readonly returnResponses: boolean
+      } | undefined
+    }
+  } | undefined
+}
+
+/**
+ * One broker action whose matching requests the authority admits without a human decision.
+ * Without `match` and `allow` it covers every request of the action.
+ */
+export type UnattendedAction = UnattendedRule & {
+  /** Broker action ID. */
+  readonly action: string
+}
+
+/** One unattended rule of an action whose action is implied by where the rule is listed. */
+export type UnattendedRule = {
+  /** Top-level body fields and their required values. */
+  readonly match: Readonly<Record<string, string | number | boolean>>
+  /** Other permitted top-level field names; their values are not checked. Empty permits no other fields. */
+  readonly allow: string[]
+} | {
+  /** No required field values. */
+  readonly match?: undefined
+  /** Permitted top-level field names. Omit to accept every body of the action. */
+  readonly allow?: string[]
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-operation-control -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-operation-evidence -->
+<a id="deepseek-aidsh-operation-evidence"></a>
+
+## `@deepseek-ai/dsh-operation-evidence`
+
+- `source`: [`packages/experimental/operation-evidence/src/index.ts:24`](../packages/experimental/operation-evidence/src/index.ts)
+
+```ts config-catalog
+/** Operator-controlled paths and limits for the witness service. */
+export interface Config {
+  /** Absolute Unix socket path in a directory controlled by the witness account. */
+  socketPath: string
+  /** Absolute database path in a witness-owned directory inaccessible to other accounts. */
+  databasePath: string
+  /** Socket permissions. Group access is for the dedicated broker group. */
+  socketMode?: '0600' | '0660'
+  /** Maximum time to send the request, including headers and body. */
+  timeoutMs?: number
+  /** Maximum bytes in the UTF-8 append request body. */
+  maxRequestBytes?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-operation-evidence -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-permission-presets -->
 <a id="deepseek-aidsh-permission-presets"></a>
 
@@ -2778,8 +3078,10 @@ export interface PlanModeConfig {
 - `source`: [`packages/boot/plugin-manager/src/index.ts:54`](../packages/boot/plugin-manager/src/index.ts)
 
 ```ts config-catalog
-/** The pnpm executable, registries, and limits for diagnostics, lookups and connection checks. */
+/** Profile management policy, pnpm executable, registries, and diagnostic and lookup limits. */
 export interface Config {
+  /** Whether the manager offers composition changes; fixed profiles retain their contributed pages and inventory. */
+  management?: 'full' | 'fixed'
   /** The pnpm executable name or path; resolved through `PATH` like the `dsh plugin` command. */
   pnpmCommand?: string
   /** Maximum retained package-operation diagnostic bytes. */
@@ -4505,6 +4807,26 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-ralph -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tool-schedule -->
+<a id="deepseek-aidsh-tool-schedule"></a>
+
+## `@deepseek-ai/dsh-tool-schedule`
+
+- `inject`: `tools` · `systemPrompt`
+- `source`: [`packages/schedule/tool-schedule/src/index.ts:40`](../packages/schedule/tool-schedule/src/index.ts)
+
+```ts config-catalog
+/** Deployment scope of the Schedule tools. */
+export interface Config {
+  /**
+   * Limit `schedule_list`, `schedule_view`, and `schedule_edit` to tasks whose stored target delivers to the calling
+   * Session; any other task reads as `schedule_not_found`.
+   */
+  callerTargetOnly?: boolean
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-schedule -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tool-session-query -->
 <a id="deepseek-aidsh-tool-session-query"></a>
 
@@ -5190,7 +5512,6 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-tool-call-timeout-policy` | `tools` | [`packages/guard/timeout-policy/src/index.ts`](../packages/guard/timeout-policy/src/index.ts) |
 | `@deepseek-ai/dsh-tool-cordis` | `tools` · `cordisInspect` | [`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/tool-cordis/src/index.ts) |
 | `@deepseek-ai/dsh-tool-executor-native` | `tools` | [`packages/core/tool-executor-native/src/index.ts`](../packages/core/tool-executor-native/src/index.ts) |
-| `@deepseek-ai/dsh-tool-schedule` | `tools` · `systemPrompt` | [`packages/schedule/tool-schedule/src/index.ts`](../packages/schedule/tool-schedule/src/index.ts) |
 | `@deepseek-ai/dsh-tool-working-directory` | `tools` · `workingDirectory` | [`packages/session/tool-working-directory/src/index.ts`](../packages/session/tool-working-directory/src/index.ts) |
 | `@deepseek-ai/dsh-tools` | `systemPrompt` | [`packages/core/tools/src/index.ts`](../packages/core/tools/src/index.ts) |
 | `@deepseek-ai/dsh-user-questions` | — | [`packages/interaction/user-questions/src/index.ts`](../packages/interaction/user-questions/src/index.ts) |

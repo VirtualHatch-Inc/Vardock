@@ -1,5 +1,5 @@
 import { imageOffloadProjection } from '@deepseek-ai/dsh-compaction-image-offload/projection'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
@@ -239,6 +239,26 @@ function compactEvents(session: Session): SessionEvent[] {
 }
 
 describe('compactNow through the real loop', () => {
+  it('rejects manual compaction on an unsupported model and releases turn admission', async () => {
+    const harness = await loopHarness()
+    const { ctx, agent, compact, adapter, log } = harness
+    onTestFinished(() => ctx.fiber.dispose())
+    await seedHistory(harness)
+    const before = agent.session.snapshotEvents()
+    vi.spyOn(adapter, 'resolveModel').mockResolvedValue({
+      provider: MODEL, id: MODEL, name: MODEL, compaction: 'unsupported',
+    })
+
+    await expect(compact.compactNow(agent, SIGNAL)).rejects.toMatchObject({ code: 'unsupported' })
+
+    expect(log).toEqual([])
+    expect(compact.calls).toHaveLength(0)
+    expect(agent.session.snapshotEvents()).toEqual(before)
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'keep going' }], source: { kind: 'user' } }))
+    await agent.whenIdle()
+    expect(adapter.requests).toHaveLength(2)
+  })
+
   it('passes logged image omissions to the summarizer without changing the original message', async () => {
     const { ctx, agent, compact } = await loopHarness()
     try {
@@ -265,17 +285,19 @@ describe('compactNow through the real loop', () => {
     const harness = await loopHarness()
     const { agent, compact, adapter, log } = harness
     await seedHistory(harness)
+    const summarizing = deferred()
     const gate = deferred()
+    onTestFinished(gate.resolve)
+    compact.duringSummary = summarizing.resolve
     compact.gate = gate.promise
 
     const running = compact.compactNow(agent, SIGNAL)
-    await Promise.resolve()
+    await Promise.race([summarizing.promise, running])
     expect(log).toEqual(['compaction/start:null'])
     agent.followup(createUserMessage({
       content: [{ type: 'text', text: 'after compaction' }],
       source: { kind: 'user' },
     }))
-    await new Promise<void>((resolve) => { setTimeout(resolve, 5) })
 
     expect(agent.status).toBe('idle')
     expect(adapter.requests).toHaveLength(1)
@@ -579,7 +601,10 @@ describe('compactNow transaction and failure classification', () => {
   it('revalidates the selected span after the summarizer continuation settles', async () => {
     const { compact, flushes } = detachedService()
     const session = closedConversation(2)
+    const summarizing = deferred()
     const gate = deferred()
+    onTestFinished(gate.resolve)
+    compact.duringSummary = summarizing.resolve
     compact.gate = gate.promise
     let released = 0
     const agent = fakeAgent(session, () => () => { released += 1 })
@@ -587,7 +612,7 @@ describe('compactNow transaction and failure classification', () => {
     const generation = session.surface.replaceGeneration
 
     const running = compact.compactNow(agent, SIGNAL)
-    await Promise.resolve()
+    await Promise.race([summarizing.promise, running])
     expect(compact.calls).toHaveLength(1)
 
     gate.resolve()
@@ -903,11 +928,14 @@ describe('compactNow transaction and failure classification', () => {
     const { compact } = detachedService()
     const session = closedConversation(3)
     const agent = fakeAgent(session, () => () => undefined)
+    const summarizing = deferred()
     const gate = deferred()
+    onTestFinished(gate.resolve)
+    compact.duringSummary = summarizing.resolve
     compact.gate = gate.promise
 
     const manual = compact.compactNow(agent, SIGNAL)
-    await Promise.resolve()
+    await Promise.race([summarizing.promise, manual])
     const nodes = session.surface.nodes
     await expect(compact.compactRegion(
       nodes[0]!,

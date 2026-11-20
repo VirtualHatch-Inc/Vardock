@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-当敏感工具操作应当暂停等待人或机器的决定、而非无条件执行时，组合此服务。它要求 `sessionProjections`；发布的配置已提供该服务。工具流水线与沙箱 bash 工具会通过此 seam 路由 `ask` 决定，并在该 seam 缺失时以拒绝方式关闭，因此交互式部署至少应组合一个应答者。
+当敏感工具操作需要人或机器作出决定时，组合此服务。它需要 `sessionProjections`；`requestBackground` 还会读取可选的 `sessions` 服务，缺少时拒绝请求。发布的配置档同时提供两者。工具流水线与沙箱 bash 工具会通过此 seam 路由 `ask` 决定，并在该 seam 缺失时以拒绝方式关闭，因此交互式部署至少应组合一个应答者。
 
 ### 组合应答者
 
@@ -50,7 +50,9 @@ kind: "package-reference"
 
 ### 请求决定
 
-`request(req)` 指名 agent、工具、原因、可选的调用 id，以及一个中止信号。可选的 `displayReason` 提供本地化展示文案，不改写日志中的原因。它要求当前处于尚未结束的轮次中：空闲或在轮次之间调用会在审计前抛出异常。中止会撤回问题——请求以 `cancelled` 结算，迟到的回答被丢弃。若任一审计事件在提交前失败，请求会被拒绝，而不会返回一项未记录的决定。
+`request(req)` 在发起请求的 agent 的开放轮次内发起审批。后台操作可使用 `requestBackground(req)` 通过应答 agent 的会话发起审批，包括会话空闲时。调用方须提供具有活动持久化写入句柄的会话。服务在分发前持久化请求，在返回前持久化决定。审计或检查点失败、或没有检查点监听器时，请求会被拒绝。
+
+通过 `reason` 提供审计日志要记录的操作。`displayReason` 提供本地化标题，`detail` 为没有关联工具调用的独立操作提供纯文本。中止待回答的问题会记录 `cancelled` 并丢弃迟到的回答。审计事件追加失败会拒绝请求。
 
 ### 模型与用户看到什么
 
@@ -75,7 +77,7 @@ kind: "package-reference"
 
 ### 分发
 
-`decide()` 让应答者 waterfall 与请求信号赛跑，并隔离所有应答者故障：抛出异常的监听器会使问题以 `unavailable` 关闭，不属于结果词汇的异常返回值也会规范化为 `unavailable`。`never` 策略在服务内部、waterfall 分发之前执行，因此之后以 `prepend` 注册的监听器也无法绕过确定性的拒绝。请求必须处于未结束的轮次内，因为轮次是持久日志的提交／回放边界——轮次之间的裸事件与崩溃尾部无法区分。
+两种请求方法均在应答者 waterfall 期间监听中止信号，并将应答者异常或无效结果转换为 `unavailable`。服务在分发 waterfall 之前执行 `never` 策略，使用 `prepend` 注册的应答者也适用。
 
 ### 策略与运行时上下文快照
 
@@ -87,7 +89,7 @@ kind: "package-reference"
 
 ### 审计
 
-`request()` 先追加携带请求身份与工具的 `approval/asked`，再追加携带最终结果的 `approval/decided`；确切追加字段见 [`src/index.ts`](src/index.ts)。两者都只写入日志。
+两种方法都会将 `approval/asked` 和对应的 `approval/decided` 追加到应答会话。审计事件独立于模型历史。单独的操作授权记录由调用方负责。[审计实现](src/index.ts)
 
 </details>
 
@@ -161,9 +163,8 @@ The user changed the approval policy from "ask the user for approval" to "never 
 
 这些限制说明该 seam 不适用的场景，以及组合时需要特别注意的场景。它们是当前包约束，不是通用权限对比。
 
-- **请求只在尚未结束的轮次内有效**：在空闲时或轮次之间发起调用，会在审计前抛出异常；持久化的轮次外审批工作流仍属延期工作。
 - **仅存在一次性授权**：结果词汇包含 `allowed-once`，但不含 `allow-always`、已记住的规则、撤销或授权存储；会话策略只有 `ask`／`never`。
-- **请求不携带工具参数**：应答者会看到工具名称、原因和可选调用 id；ACP（Agent Client Protocol）机器通道要求调用 id，并会委托不含 id 的请求。
+- **ACP 需要工具调用 ID。** 它会委托不含调用 ID 的独立请求。
 - **没有内置应答者**：无头或组合不完整的部署会返回 `unavailable` 并以拒绝方式关闭；服务自身绝不会提示人类。
 - **待处理审批仅在进程内有效**：检查点恢复策略和轮次状态，不恢复待处理应答的 Promise 或一次性授权。恢复不会重新提交问题或重复运行时副作用。
 

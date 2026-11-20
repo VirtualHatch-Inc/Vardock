@@ -136,9 +136,12 @@ This section explains the design decisions behind the bridge and points at the c
 | [`src/transport.ts`](src/transport.ts) | Transport factory: stdio spawn with scrubbed env, Streamable HTTP |
 | [`src/status.ts`](src/status.ts) | Status cell keyed by Fiber, retaining its final cleanup result |
 | [`src/probe.ts`](src/probe.ts) | One-shot probe: connect, identify, list tools, close — nothing registers |
+| [`src/call.ts`](src/call.ts) | One-shot tool call: connect, call one tool, close — nothing registers (`./call`) |
 | [`src/deadline.ts`](src/deadline.ts) | Shared settlement deadline behind the startup and probe budgets |
 | [`src/diagnostic.ts`](src/diagnostic.ts) | Cause-chain diagnostics and secret-value redaction |
 | [`src/types.ts`](src/types.ts) | Client-safe connection status and probe outcome types (`./types`) |
+
+`callServerTool` accepts an optional per-connection Fetch API client after its cancellation signal; response-byte limits and cleanup still apply.
 
 The exported `createMcpToolDefinition(ctx, options)` adapts an upstream tool schema and raw-result callback to the same canonical values, errors, and durable image projection. Each callback receives the exact `ToolExecution`, including its Agent and cancellation signal; SDK spec-type validation checks its result before projection. Callers own registration, cancellation deadlines, and provider teardown. The native Cua Driver provider uses this adapter without opening an MCP transport.
 

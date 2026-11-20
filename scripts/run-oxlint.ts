@@ -12,14 +12,6 @@ function isFixInvocation(args: readonly string[]): boolean {
   return args.some(arg => FIX_FLAGS.has(arg))
 }
 
-function hasOutputFormat(args: readonly string[]): boolean {
-  return args.some(arg =>
-    arg === '-f'
-    || arg.startsWith('-f=')
-    || arg === '--format'
-    || arg.startsWith('--format='))
-}
-
 /** Complete Oxlint child-process arguments and environment. */
 export interface OxlintInvocation {
   readonly args: readonly string[]
@@ -28,8 +20,8 @@ export interface OxlintInvocation {
 
 /**
  * Apply the repository worker bound to both Oxlint backends.
- * `DSH_OXLINT_THREADS` selects the bound; without it, CI keeps Oxlint's own default and other runs use the
- * [local worker budget](./parallelism.ts). A caller's own `--threads` without `DSH_OXLINT_THREADS` passes through.
+ * `DSH_OXLINT_THREADS` selects the bound; without it, runs use the [local worker budget](./parallelism.ts).
+ * A caller's own `--threads` without `DSH_OXLINT_THREADS` passes through.
  * @param args - Oxlint CLI arguments requested by the caller.
  * @param env - Environment inherited by the Oxlint process.
  * @param cpus - CPU count Node reports for this process.
@@ -40,8 +32,6 @@ export function resolveOxlintInvocation(
   env: NodeJS.ProcessEnv,
   cpus: number = availableParallelism(),
 ): OxlintInvocation {
-  const resolvedArgs = [...args]
-  if (env.CI === 'true' && !hasOutputFormat(args)) resolvedArgs.push('--format=default')
   const raw = env.DSH_OXLINT_THREADS
   const explicit = raw !== undefined && raw !== ''
   if (explicit) {
@@ -52,12 +42,11 @@ export function resolveOxlintInvocation(
   }
   if (args.some(arg => arg === '--threads' || arg.startsWith('--threads='))) {
     if (explicit) throw new Error('run-oxlint: use DSH_OXLINT_THREADS instead of passing --threads directly.')
-    return { args: resolvedArgs, env: { ...env } }
+    return { args: [...args], env: { ...env } }
   }
-  if (!explicit && env.CI === 'true') return { args: resolvedArgs, env: { ...env } }
-  const threads = explicit ? raw : String(defaultParallelism(env, cpus))
+  const threads = explicit ? raw : String(defaultParallelism(cpus))
   return {
-    args: [...resolvedArgs, `--threads=${threads}`],
+    args: [...args, `--threads=${threads}`],
     env: { ...env, GOMAXPROCS: threads },
   }
 }

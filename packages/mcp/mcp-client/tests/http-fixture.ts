@@ -13,8 +13,11 @@ export interface HttpMcpFixture {
   close: () => Promise<void>
 }
 
-/** Start a local stateless MCP endpoint exposing one `ping` tool, optionally echoing the request credential in an MCP tool error. */
-export async function startHttpMcpFixture(options: { rejectToolCalls?: boolean } = {}): Promise<HttpMcpFixture> {
+/**
+ * Start a local stateless MCP endpoint exposing one `ping` tool, optionally
+ * echoing the request credential in an MCP tool error or replying with other text.
+ */
+export async function startHttpMcpFixture(options: { rejectToolCalls?: boolean; reply?: string } = {}): Promise<HttpMcpFixture> {
   const calls: string[] = []
   const authorization: Array<string | undefined> = []
   const handler = createMcpHandler(({ requestInfo }) => {
@@ -27,7 +30,7 @@ export async function startHttpMcpFixture(options: { rejectToolCalls?: boolean }
       if (options.rejectToolCalls) {
         return { isError: true, content: [{ type: 'text', text: `MCP fixture rejected ${requestInfo?.headers.get('authorization')}` }] }
       }
-      return { content: [{ type: 'text', text: 'pong' }] }
+      return { content: [{ type: 'text', text: options.reply ?? 'pong' }] }
     })
     return mcp
   })

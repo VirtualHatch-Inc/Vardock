@@ -15,6 +15,8 @@ This table connects model-visible tool names to the plugin package and service s
 
 | Tool package | Model-visible names | Requires | Writes / affects | Shipped aliases | Deployment note |
 | --- | --- | --- | --- | --- | --- |
+| `@deepseek-ai/dsh-operation-control` | `exec`, `inspect_business_operations`, `list_business_actions` | `ctx.tools`, `ctx.agents`, `ctx.approval` | `tool/call`, `tool/result` | - | - |
+| `@deepseek-ai/dsh-assistant` | `delegate_work`, `list_work`, `list_work_inputs`, `report_work`, `stop_work` | `ctx.tools`, `ctx.assistant` | `tool/call`, `tool/result`, `Assistant work records`, `user/message for requests and results` | - | The Web opt-in layer exposes delegation, listing, and cancellation in the main Assistant Session. Active work Sessions have the report tool. |
 | `@deepseek-ai/dsh-plugin-manager` | `plugin_manager` | `ctx.tools`, `ctx.pluginManager`, `ctx.sandboxPolicy` | `tool/call`, `tool/result`, `user/message` | - | - |
 | `@deepseek-ai/dsh-plugin-market` | `plugin_market` | `ctx.tools`, `ctx.pluginMarket` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-mcp-resources` | `list_mcp_resource_templates`, `list_mcp_resources`, `read_mcp_resource` | `ctx.tools`, `ctx.mcpResources` | `tool/call`, `tool/result` | - | - |
@@ -52,6 +54,273 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-workspace-dependencies` | `load_workspace_dependencies` | `ctx.tools` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
+
+<a id="deepseek-aidsh-operation-control"></a>
+
+## `@deepseek-ai/dsh-operation-control`
+
+### `exec`
+
+Run a shell script in this work Session’s isolated /workspace. The supplied Linux work image provides POSIX /bin/sh and Node.js 24 with built-in fetch and standard Linux utilities. Python and curl are not installed. Use POSIX shell syntax; after a heredoc terminator, put the next command on a new line without a leading semicolon. This is an external execution service: /workspace is writable. The model provider’s native filesystem sandbox does not apply to this tool. Files persist across calls and explicit continuations. The workspace has no direct network access or Host files. A configured gateway can allow selected network destinations. When DSH_BROKER_URL is set, submit external operations there with Node.js fetch as POST JSON {requestKey, action, body}, using a UUID requestKey, an operator-configured action, exact JSON text in body, and Authorization: Bearer from DSH_BROKER_TOKEN. Keep that token private. Scripts may run automatically under the operator’s policy. External requests wait for owner approval unless a configured rule admits them. Check the JSON response: status is the observed HTTP status, or toolError says whether a tool call’s result was marked as an error; code indicates a failure; body is the service’s response text when the action returns one and this work may receive it, and bodyOmitted says why it is missing; not-permitted means the request was sent but this work may not receive the response. The response includes an operation ID for inspection. An HTTP response does not verify business completion. When an operation’s outcome is uncertain, for example when its response is missing, report the uncertain outcome with its operation ID and do not submit the same request again. Each call stops its processes before returning. Inspect the workspace before retrying an interrupted command.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "command": {
+      "type": "string",
+      "description": "POSIX shell script to run from /workspace."
+    }
+  },
+  "required": [
+    "command"
+  ]
+}
+```
+
+Source: [`packages/experimental/execution-container/src/tool.ts`](../packages/experimental/execution-container/src/tool.ts)
+
+### `inspect_business_operations`
+
+Inspect recorded external operations for a worker Session. Set reconcile to true to check unresolved operations with a read-only lookup. Only succeeded or failed business completion with a receipt confirms the outcome. Do not resend an operation whose outcome is uncertain.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "Worker Session id returned by delegate_work or list_work."
+    },
+    "reconcile": {
+      "type": "boolean",
+      "description": "Look up each eligible unresolved operation on this page once.",
+      "default": false
+    },
+    "after": {
+      "type": "string",
+      "description": "Use the previous result’s next value to read older operations."
+    }
+  },
+  "required": [
+    "session_id"
+  ]
+}
+```
+
+Source: [`packages/experimental/operation-control/src/agent.ts`](../packages/experimental/operation-control/src/agent.ts)
+
+### `list_business_actions`
+
+List the external actions a worker may request, with each action’s purpose and JSON body. Call this before delegating work that needs an external action, and include the action name and body format in the worker’s instructions.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/experimental/operation-control/src/agent.ts`](../packages/experimental/operation-control/src/agent.ts)
+
+<a id="deepseek-aidsh-assistant"></a>
+
+## `@deepseek-ai/dsh-assistant`
+
+### `delegate_work`
+
+Delegate independent work to a background Session and return immediately. Results return to this conversation. Use previous_work_id to explicitly continue a finished or interrupted worker after inspecting its results. Do not automatically repeat uncertain external operations.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "request_key": {
+      "type": "string",
+      "description": "Use a new key for every continuation or changed instruction, permission, or input. Reuse a key only to retrieve the same request with every argument unchanged; that does not run it again."
+    },
+    "prompt": {
+      "type": "string",
+      "description": "Self-contained instruction and relevant context for the worker. Selected attachments are imported under input/ in its isolated workspace; the worker receives their paths. Do not give Host paths as worker paths."
+    },
+    "previous_work_id": {
+      "type": "string",
+      "description": "Previous terminal work request whose Session and files should continue with the current prompt. This creates a distinct work request; its earlier operations remain history."
+    },
+    "inputs": {
+      "type": "array",
+      "description": "For fresh work, required when the owner request that triggered this entrance turn has attachments. Select their seq and index from list_work_inputs; pass [] when this work needs no files. Omission is allowed without attachments. A continuation inherits its existing files.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "description": "Sequence of the owner message."
+          },
+          "index": {
+            "type": "integer",
+            "description": "Zero-based attachment position in the message content."
+          }
+        },
+        "required": [
+          "seq",
+          "index"
+        ]
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "description": "Permissions the worker needs, and no more. Required for new work. With previous_work_id, omit to keep the previous permissions or pass a narrower set. To add a missing permission, start fresh work without previous_work_id.",
+      "additionalProperties": false,
+      "properties": {
+        "exec": {
+          "type": "boolean",
+          "description": "Enable for running any script, reading or processing workspace files, calculating results from files, writing reports, or calling external actions. File import/export permissions do not enable execution."
+        },
+        "brokerActions": {
+          "type": "array",
+          "description": "Exact names from list_business_actions of the external actions the worker may request from a command. Use an empty list when exec is false.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "data": {
+          "type": "object",
+          "description": "File and service-response permissions for this work. Omit to grant none.",
+          "additionalProperties": false,
+          "properties": {
+            "import": {
+              "type": "boolean",
+              "description": "Enable to copy selected owner attachments into the workspace; reading them also needs exec and both disclosure permissions."
+            },
+            "export": {
+              "type": "boolean",
+              "description": "Enable to return workspace files as owner downloads; creating them also needs exec and both disclosure permissions."
+            },
+            "discloseToModel": {
+              "type": "boolean",
+              "description": "Whether imported or exported file data may reach a model through work results."
+            },
+            "discloseToUser": {
+              "type": "boolean",
+              "description": "Whether imported or exported file data may reach the owner through work history or downloads."
+            },
+            "returnResponses": {
+              "type": "boolean",
+              "description": "Whether the worker’s commands may receive the response text of an external action, which then reaches the worker model. Without it, the worker sees only the status."
+            }
+          },
+          "required": [
+            "import",
+            "export",
+            "discloseToModel",
+            "discloseToUser",
+            "returnResponses"
+          ]
+        }
+      },
+      "required": [
+        "exec",
+        "brokerActions"
+      ]
+    }
+  },
+  "required": [
+    "request_key",
+    "prompt"
+  ]
+}
+```
+
+Source: [`packages/experimental/assistant/src/tools.ts`](../packages/experimental/assistant/src/tools.ts)
+
+### `list_work`
+
+List work states, worker Session ids, granted permissions, and saved results. Also retry pending queue and result delivery after a repaired Host error. A running state is not proof of completion; unknown requires inspection before continuation.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/experimental/assistant/src/tools.ts`](../packages/experimental/assistant/src/tools.ts)
+
+### `list_work_inputs`
+
+List attachments in the most recent owner message that included files or images. Use their seq and index to select inputs for new work.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/experimental/assistant/src/tools.ts`](../packages/experimental/assistant/src/tools.ts)
+
+### `report_work`
+
+Persist this worker request outcome and end its turn. Imported-file work cannot be reported complete unless a nonerror exec result was observed in this work; that does not verify file use or reported values. Base computed values and file contents on execution output, never a filename or path. If a needed permission or tool is missing, use failed, name it, and give no invented result. Use needs_input for a question or required decision. Include evidence and any partial effects. The main assistant receives this report.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "description": "Explicit outcome.",
+      "enum": [
+        "completed",
+        "needs_input",
+        "failed"
+      ]
+    },
+    "result": {
+      "type": "string",
+      "description": "Result with evidence, or a precise question or failure."
+    },
+    "artifacts": {
+      "type": "array",
+      "description": "Paths relative to the worker workspace of the files the owner asked to receive. Each file uses one execution slot; put evidence in result instead of attaching it.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "status",
+    "result"
+  ]
+}
+```
+
+Source: [`packages/experimental/assistant/src/tools.ts`](../packages/experimental/assistant/src/tools.ts)
+
+### `stop_work`
+
+Stop queued or running work. Effects already performed are not undone.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "work_id": {
+      "type": "string",
+      "description": "Request id returned by delegate_work."
+    }
+  },
+  "required": [
+    "work_id"
+  ]
+}
+```
+
+Source: [`packages/experimental/assistant/src/tools.ts`](../packages/experimental/assistant/src/tools.ts)
+
+The Web opt-in layer exposes delegation, listing, and cancellation in the main Assistant Session. Active work Sessions have the report tool.
 
 <a id="deepseek-aidsh-plugin-manager"></a>
 

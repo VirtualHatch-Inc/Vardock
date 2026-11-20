@@ -86,8 +86,9 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
   }
 
   /**
-   * Detach listeners and reject pending and future outbound requests. Safe before
-   * {@link start}; starting again does not reset the request failure.
+   * Detach listeners, reject outbound requests, and suppress replies from
+   * inbound handlers that are still running. Safe before {@link start};
+   * starting again does not reset the request failure.
    */
   close(): void {
     this.input.off('data', this.onData)
@@ -237,8 +238,10 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
     }
     try {
       const result = await handler(method, params)
+      if (this.failure !== undefined) return
       this.write({ jsonrpc: '2.0', id, result })
     } catch (error) {
+      if (this.failure !== undefined) return
       this.writeError(id, -32603, error instanceof Error ? error.message : String(error))
     }
   }

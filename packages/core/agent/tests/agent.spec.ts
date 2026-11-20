@@ -30,6 +30,7 @@ function stubAgent(rawId: string, overrides: Partial<Agent> = {}): Agent {
     status: 'idle',
     ctx,
     send: () => {},
+    wake: () => {},
     followup: () => {},
     steer: () => ({ outcome: Promise.resolve({ status: 'rejected' as const }) }),
     inject: () => {},

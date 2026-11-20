@@ -71,6 +71,7 @@ export const inject = [
  * @param ctx - the browser plugin context.
  */
 export function apply(ctx: ClientContext): void {
+  const presentation = ctx.configForms.get<{ showConversationControls: boolean }>('ui-agent-preset')
   const toolsSettings = ctx.configForms.get<{ enabled: boolean }>('ui-settings')
   const presetSettings = ctx.configForms.get(AGENT_PRESET_SETTINGS_NS)
   let active = true
@@ -223,24 +224,29 @@ export function apply(ctx: ClientContext): void {
 
     scope.effect(() => {
       creatorDraft = startCreatorDraft
-      const chip = scope.slots.register({
-        name: 'conversation.hero.agentPreset',
-        locale: 'settings.agentPreset',
-        inject: seatInjected,
-      }, AgentPresetSeat)
-      const label = scope.slots.register({
-        name: 'conversation.session.header.actions',
-        id: 'agent-preset',
-        // Static session context occupies the header's leading negative-order band.
-        order: -10,
-        locale: 'settings.agentPreset',
-        inject: labelInjected,
-      }, AgentPresetLabel)
-      return () => {
-        creatorDraft = undefined
-        chip()
-        label()
+      let unregister: (() => void) | undefined
+      const refresh = (): void => {
+        unregister?.()
+        unregister = undefined
+        if (presentation.getSnapshot().value?.showConversationControls === false) return
+        const chip = scope.slots.register({
+          name: 'conversation.hero.agentPreset',
+          locale: 'settings.agentPreset',
+          inject: seatInjected,
+        }, AgentPresetSeat)
+        const label = scope.slots.register({
+          name: 'conversation.session.header.actions',
+          id: 'agent-preset',
+          // Static session context occupies the header's leading negative-order band.
+          order: -10,
+          locale: 'settings.agentPreset',
+          inject: labelInjected,
+        }, AgentPresetLabel)
+        unregister = () => { chip(); label() }
       }
+      const stop = presentation.subscribe(refresh)
+      refresh()
+      return () => { stop(); unregister?.(); creatorDraft = undefined }
     }, 'ui-agent-preset: new-session chip and header label')
 
     scope.slots.inject('plugins.add.actions', () => scope.slots.register({

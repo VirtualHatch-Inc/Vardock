@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "ローカル Codex",
+    "description": "ローカルの Codex CLI のログインを使ってモデルにリクエストを送信します。"
+  }
+}

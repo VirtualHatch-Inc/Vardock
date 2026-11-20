@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Vermittler für HTTPS-Vorgänge",
+    "description": "Sendet genehmigte JSON-Anfragen mit den Zugangsdaten der Autorisierungsstelle an konfigurierte HTTPS-Endpunkte."
+  }
+}

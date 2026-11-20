@@ -2,6 +2,7 @@
 
 /** Simplified Chinese dictionary and key-set source of truth. */
 export const zh = {
+  auditDetails: '完整详情',
   waiting: '等待审批',
   'detail.aria': '审批详情',
   escalation: '工具 {toolName} 请求越权执行',
@@ -16,6 +17,7 @@ export type ApprovalKey = keyof typeof zh
 
 /** English dictionary, checked against the Chinese key set. */
 export const en = {
+  auditDetails: 'Full details',
   waiting: 'Waiting for approval',
   'detail.aria': 'Approval details',
   escalation: 'Tool {toolName} requests privileged execution',
@@ -27,6 +29,7 @@ export const en = {
 
 /** Japanese copy, checked against the English keys. */
 export const ja = {
+  auditDetails: '詳細を表示',
   'waiting': '承認待ち',
   'detail.aria': '承認の詳細',
   'escalation': 'ツール {toolName} が特権実行を要求しています',
@@ -38,6 +41,7 @@ export const ja = {
 
 /** Spanish dictionary, checked against the English keys. */
 export const es = {
+  auditDetails: 'Detalles completos',
   waiting: 'Esperando aprobación',
   'detail.aria': 'Detalles de aprobación',
   escalation: 'La herramienta {toolName} solicita ejecución privilegiada',
@@ -49,6 +53,7 @@ export const es = {
 
 /** French dictionary, checked against the English keys. */
 export const fr = {
+  auditDetails: 'Détails complets',
   waiting: "En attente d'approbation",
   'detail.aria': "Détails de l'approbation",
   escalation: "L'outil {toolName} demande une exécution privilégiée",
@@ -60,6 +65,7 @@ export const fr = {
 
 /** German dictionary, checked against the English keys. */
 export const de = {
+  auditDetails: 'Vollständige Details',
   waiting: 'Warten auf Genehmigung',
   'detail.aria': 'Einzelheiten zur Genehmigung',
   escalation: 'Tool {toolName} fordert privilegierte Ausführung an',
@@ -71,6 +77,7 @@ export const de = {
 
 /** Russian dictionary, checked against the English keys. */
 export const ru = {
+  auditDetails: 'Полные сведения',
   waiting: 'Ожидание одобрения',
   'detail.aria': 'Детали утверждения',
   escalation: 'Инструмент {toolName} запрашивает привилегированное выполнение',
@@ -82,6 +89,7 @@ export const ru = {
 
 /** Portuguese dictionary, checked against the English keys. */
 export const pt = {
+  auditDetails: 'Detalhes completos',
   waiting: 'Aguardando aprovação',
   'detail.aria': 'Detalhes de aprovação',
   escalation: 'A ferramenta {toolName} solicita execução privilegiada',

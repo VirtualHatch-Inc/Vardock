@@ -427,6 +427,18 @@ it('lists bundle versions and current-profile plugin targets', async () => {
   ])
 })
 
+it('keeps a fixed profile out of the catalog and refuses a composition change', async () => {
+  const { manager, dir } = await fixture('live', false, undefined, { management: 'fixed' })
+  const before = readFileSync(join(dir, 'package.json'), 'utf8')
+  expect(manager.management()).toBe('fixed')
+  expect(await manager.listBundles()).toEqual([])
+  for (const result of [
+    await manager.setBundleEnabled('extra', false),
+    await manager.installBundle('@deepseek-ai/dsh-experimental-auto-review'),
+  ]) expect(result).toMatchObject({ changed: false, application: 'failed', error: { code: 'management-fixed' } })
+  expect(readFileSync(join(dir, 'package.json'), 'utf8')).toBe(before)
+})
+
 it('describes a bundle by its manifest and patch: one-liner, rows without a live entry, and the built-in rows it changes', async () => {
   const { manager, dir, bundle } = await fixture()
   bundle('described', [{ id: 'described-row', name: './plugin.mjs' }])

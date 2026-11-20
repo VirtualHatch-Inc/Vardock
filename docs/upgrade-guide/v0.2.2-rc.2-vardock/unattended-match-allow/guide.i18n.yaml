@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.2-vardock/unattended-match-allow/guide.md
+/:
+  en: 683f903e361d9e57
+  zh: 86e18aa3f556c790
+/matching-unattended-rules-require-an-allow-list:
+  en: c39aa94abd7d9b08
+  zh: 67563bbe39c2f863
+/matching-unattended-rules-require-an-allow-list/change:
+  en: 1ef6905489c5f4e7
+  zh: c874ab7c01a1da76
+/matching-unattended-rules-require-an-allow-list/migration:
+  en: c7c97732430c7c6b
+  zh: eed30ad4fdc02ce9

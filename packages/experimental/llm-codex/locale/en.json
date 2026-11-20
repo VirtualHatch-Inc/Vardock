@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Local Codex",
+    "description": "Use a local Codex CLI login for model requests."
+  }
+}

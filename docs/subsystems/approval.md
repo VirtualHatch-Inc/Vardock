@@ -50,12 +50,12 @@ Both policies contribute their complete current meaning to the cache-safe runtim
 
 ## Approval request
 
-`ApprovalRequest` identifies the agent and tool action closely enough to route and audit the question. It deliberately omits tool arguments: an answerer attaches the prompt to the already-streamed tool call through `callId` instead of rendering a second copy that could drift. Optional `displayReason` carries requester-owned locale strings to presentation; `reason` remains the audit text.
+`ApprovalRequest` identifies the answering agent and the requested operation. An answerer can use `callId` to show an already-streamed tool call. Standalone requests can supply plain-text `detail`. The service records `reason` in the audit log, and `displayReason` can provide a localized title.
 
 ```ts type-equiv
 /**
  * Readonly same-process permission question. `callId` links to an already
- * presented tool call, so arguments are not duplicated here.
+ * presented tool call. Standalone questions can supply their own plain-text detail.
  */
 interface ApprovalRequest extends ApprovalRequestEvent {
   /**
@@ -83,7 +83,9 @@ interface ApprovalRequest extends ApprovalRequestEvent {
 
 ## Dispatch and audit
 
-`ctx.approval.request(req)` requires the requesting session to be inside an open turn. It appends `approval/asked`, obtains one outcome, appends the matching `approval/decided`, and resolves with that outcome. The `never` policy is enforced inside the service before waterfall dispatch, so even an answerer registered later with `prepend` cannot bypass it. Answerers return an outcome when they own the request or call `next()` to delegate; the first answer occupies the single decision slot.
+`ctx.approval.request(req)` requires an open turn. `ctx.approval.requestBackground(req)` can ask an idle Session and requires the caller to provide a live Session with an active persistence writer. Both methods append `approval/asked`, obtain one outcome, append the matching `approval/decided`, and resolve with that outcome. The background method flushes the ask before dispatch and the decision before returning.
+
+The service enforces `never` before waterfall dispatch. Answerers return an outcome when they own the request or call `next()` to delegate. The first answer occupies the single decision slot.
 
 The audit events are log-only and do not enter the model transcript. Model-visible behavior is the caller's derived tool result plus the current runtime-context snapshot. Service disposal removes its context contribution; answerer listeners are independently effect-bound to their owning plugins.
 
@@ -114,8 +116,7 @@ setPolicy(agent: Agent, policy: ApprovalPolicy): void
 /**
  * Ask the composed answerers to decide one readonly same-process request.
  * The service borrows the request, agent, session, and live signal directly.
- * The request requires an open turn because the audit pair must be enclosed
- * by the durable log's commit/replay boundary; an idle ask rejects before
+ * A tool request belongs to an open turn. An idle ask rejects before
  * appending anything. The answerer phase always produces an outcome: an
  * aborted signal yields `'cancelled'`, a missing or throwing answerer yields
  * `'unavailable'` (fail closed), and a rogue non-vocabulary return value is
@@ -130,6 +131,17 @@ setPolicy(agent: Agent, policy: ApprovalPolicy): void
  *   append commit point.
  */
 async request(req: ApprovalRequest): Promise<ApprovalOutcome>
+
+/**
+ * Ask for one decision on a background operation, including while the answering agent is idle.
+ * The caller supplies a live Session with an active persistence writer. Flush the ask before
+ * dispatch and the decision before returning. A failed audit or checkpoint prevents a grant.
+ * @param req - The answering agent, exact operation in the audit reason, presentation detail, and cancellation signal.
+ * @returns The persisted outcome under the answering Session's policy. Only `allowed-once` grants the request.
+ * @throws When the optional `sessions` service or a Session checkpoint listener is unavailable, or an audit append
+ *   or flush fails.
+ */
+async requestBackground(req: ApprovalRequest): Promise<ApprovalOutcome>
 
 /**
  * Read the session override without applying the configured default.

@@ -263,13 +263,54 @@ function registerStrict(ctx: Context, methods: Readonly<Record<string, readonly 
 }
 
 describe('Gateway access checks', () => {
-  it('dispatches the owner without resolving resources or reading the policy', async () => {
+  it('resolves the owner’s resources and dispatches without reading the non-owner policy', async () => {
     const { ctx, bindings } = await setup()
     const decide = vi.spyOn(RemoteAccessService.prototype, 'decide')
     await expect(call(ctx, ownerPeer(ctx), 'open')).resolves.toBe('owner')
-    await expect(call(ctx, ownerPeer(ctx), 'read', { request: { shelfId: 7 } })).resolves.toBe('owner')
-    expect(decide).not.toHaveBeenCalled()
+    await expect(call(ctx, ownerPeer(ctx), 'read', { request: { shelfId: 's1' } })).resolves.toBe('owner')
+    expect(decide).toHaveBeenLastCalledWith({
+      principal: OWNER, action: 'accessFixture/read', resources: [shelf('s1')], args: { request: { shelfId: 's1' } },
+    })
     expect(bindings).not.toHaveBeenCalled()
+  })
+
+  it('refuses owner RPCs before resolving lookups or activating a receiver Context', async () => {
+    const { ctx, fixture } = await setup({ connection: true })
+    const resolveAgent = vi.fn((id: string) => ({ id }))
+    ctx.typert.lookups.register('gatewayAccessAgent', {
+      parameter: 'agent',
+      wire: 'agentId',
+      hostTypeSymbol: '@fixture/access#Agent',
+      wireTypeSymbol: '@fixture/access#AgentId',
+      resource: 'test-shelf',
+      resolve: resolveAgent,
+    })
+    const resolveContext = registerScope(ctx, 'test-shelf')
+    const guard = vi.fn<Parameters<RemoteAccessService['guard']>[0]>(request =>
+      request.resources.some(resource => resource.kind === 'test-shelf' && resource.id === 's1') ? 'shelf-paused' : undefined)
+    const dispose = ctx.remoteAccess.guard(guard)
+    const peer = ownerPeer(ctx)
+    const shared = ctx.connection.createSharedFetchHandler('/api')
+    for (const [method, args] of [
+      ['accessFixture/byLookup', { agentId: 's1' }],
+      ['accessFixture/scoped', { scopeId: 's1' }],
+    ] as const) {
+      const response = await shared.fetch(new Request(`http://host/api/${method}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'client-request', rpcId: 'rpc-owner-guard', method, payload: { args } }),
+      }), peer)
+      expect(await response.json()).toMatchObject({
+        result: { ok: false, error: { code: 'remote-access/denied', details: { action: method, reason: 'shelf-paused' } } },
+      })
+      expect(guard).toHaveBeenLastCalledWith({ principal: OWNER, action: method, resources: [shelf('s1')], args })
+    }
+    expect(resolveAgent).not.toHaveBeenCalled()
+    expect(resolveContext).not.toHaveBeenCalled()
+    expect(fixture.principals).toEqual([])
+    dispose()
+    await expect(call(ctx, peer, 'byLookup', { agentId: 's1' })).resolves.toBe('s1:owner')
+    await expect(call(ctx, peer, 'scoped', { scopeId: 's1' })).resolves.toBe('owner')
   })
 
   it('starts only in a composition that mounts remoteAccess', async () => {
@@ -340,12 +381,14 @@ describe('Gateway access checks', () => {
     hold(shelf('s1'), shelf('s2'))
     const decide = vi.spyOn(RemoteAccessService.prototype, 'decide')
     const guest = peerFor(ctx, GUEST)
-    await expect(call(ctx, guest, 'byList', { shelfIds: [] })).rejects.toMatchObject({
-      code: 'remote-access/denied', details: { action: 'accessFixture/byList', reason: 'resource-invalid' },
-    })
-    await expect(call(ctx, guest, 'read', { request: { shelfId: 7 } })).rejects.toMatchObject({
-      code: 'remote-access/denied', details: { reason: 'resource-invalid' },
-    })
+    for (const peer of [guest, ownerPeer(ctx)]) {
+      await expect(call(ctx, peer, 'byList', { shelfIds: [] })).rejects.toMatchObject({
+        code: 'remote-access/denied', details: { action: 'accessFixture/byList', reason: 'resource-invalid' },
+      })
+      await expect(call(ctx, peer, 'read', { request: { shelfId: 7 } })).rejects.toMatchObject({
+        code: 'remote-access/denied', details: { reason: 'resource-invalid' },
+      })
+    }
     expect(decide).not.toHaveBeenCalled()
     expect(bindings).not.toHaveBeenCalled()
     // Every listed resource must be allowed.

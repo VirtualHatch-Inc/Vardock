@@ -24,7 +24,7 @@ import type { AgentPresetSeatInjected } from '../src/client/AgentPresetSeat.tsx'
 import { AgentPresetSeatController } from '../src/client/seat-store.ts'
 import { CreatePluginMenuItem, type CreatePluginMenuItemInjected } from '../src/client/CreatePluginMenuItem.tsx'
 import { AgentPresetSectionController } from '../src/client/section-store.ts'
-import { apply as hostApply } from '../src/index.ts'
+import { Config as HostConfig } from '../src/index.ts'
 import type { AgentPresetRow } from '@deepseek-ai/dsh-agent-preset-registry/types'
 
 // These specs assert the shipped Chinese copy. The lane has no jsdom `window`,
@@ -341,8 +341,8 @@ describe('ui-agent-preset apply', () => {
     },
   )
 
-  it('keeps the host Loader entry inert', () => {
-    expect(hostApply).not.toThrow()
+  it('declares conversation controls as a live Host setting', () => {
+    expect(HostConfig.dict?.showConversationControls?.meta.volatile).toBe(true)
   })
 
   it('declares the services it uses', () => {

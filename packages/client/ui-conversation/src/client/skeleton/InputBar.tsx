@@ -44,7 +44,7 @@ import css from './InputBar.module.css'
 export type InputBarProps = ComposerBarProps
 
 export const InputBar = memo(function InputBar({
-  useSession, useInput, inputActions, keyboard, addFiles, removeAttachment, resolveDraftAttachments,
+  useSession, useInput, inputActions, keyboard, addFiles, usesVerbatimAttachments, removeAttachment, resolveDraftAttachments,
   retryFileUpload, registerFileIntake,
   toggleCommandMenu, stop, retry, t,
   renderSlot, useBusyEnter, useFileUploads, useNotices, useLexicon, useMenuLauncher, useStopShortcut,
@@ -253,7 +253,7 @@ export const InputBar = memo(function InputBar({
       if (continuable && files.some(file => directories?.has(file) || !isImageMediaType(file.type))) {
         return t('image.unsupportedType')
       }
-      if (imageLimits !== undefined) {
+      if (imageLimits !== undefined && usesVerbatimAttachments?.() !== true) {
         const mediaTypes = imageLimits.mediaTypes as readonly string[]
         const images = files.filter(file => mediaTypes.includes(file.type))
         const imageAttachments = attachments.filter(attachment => attachment.kind === 'image')
@@ -272,7 +272,7 @@ export const InputBar = memo(function InputBar({
       return addFiles(files, directories)
     })()
     if (rejected !== null) showToast(rejected)
-  }, [uploadDenied, locked, machineBusy, subagent, continuable, addFiles, attachments, imageLimits, showToast, t])
+  }, [uploadDenied, locked, machineBusy, subagent, continuable, addFiles, usesVerbatimAttachments, attachments, imageLimits, showToast, t])
 
   const canAcceptDrop = !uploadDenied && (subagent === null || continuable) && !locked && !machineBusy && addFiles !== undefined
 

@@ -1,7 +1,7 @@
 /** Provider-owned preparation steps and persisted recognition preferences. */
 import { useEffect, useState } from 'react'
 import { Button, DisclosureRow, IconChevronDownOutlineRegular, StateDot, type StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SpeechPreparationState, SpeechProviderId, SpeechProviderView, SpeechSelectionPatch } from '@deepseek-ai/dsh-experimental-speech-to-text/types'
 import type { VoiceInputInjected } from './VoiceInput.tsx'
 import { MicrophonePicker } from './MicrophonePicker.tsx'
@@ -128,11 +128,13 @@ export function PreparationCard({ provider, connected, prepare, cancelPreparatio
   </section>
 }
 
-/** Recognition preferences and preparation cards shared by plugin details and Settings. */
-export function VoicePreparation({ useSpeechReadiness, ...props }: Pick<InjectFace<VoiceInputInjected>,
-  'useSpeechReadiness' | 'configure' | 'prepare' | 'cancelPreparation' | 'createRecording' | 'useMicrophoneDevice' | 'selectMicrophone'> & PropsLocale<typeof NS>) {
+/** Recognition preferences and preparation cards on the voice page and bundle details. */
+export function VoicePreparation({ view, useSpeechReadiness, ...props }: Pick<InjectFace<VoiceInputInjected>,
+  'useSpeechReadiness' | 'configure' | 'prepare' | 'cancelPreparation' | 'createRecording' | 'useMicrophoneDevice' | 'selectMicrophone'>
+  & PropsLocale<typeof NS> & Partial<Pick<PropsRuntime<'plugins.item'>, 'view'>>) {
   const readiness = useSpeechReadiness(value => value), catalog = readiness.catalog
   const [saving, setSaving] = useState(false), [error, setError] = useState('')
+  if (view === 'summary') return <>{props.t('settings.description')}</>
   const configure = async (patch: SpeechSelectionPatch): Promise<void> => {
     setSaving(true); setError('')
     try { await props.configure(patch) } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)) }

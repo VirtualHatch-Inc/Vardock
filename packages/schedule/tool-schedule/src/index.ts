@@ -4,10 +4,12 @@
  * plugin registers them in the mounting scope, so a preset decides which
  * agents receive them. Tasks belong to the Host, not to a Session: the tools
  * read and change any task by id, and only the delivery target names a Session.
+ * With `callerTargetOnly`, they read and change only tasks that deliver to the calling Session.
  * @module @deepseek-ai/dsh-tool-schedule
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 // Type-only: make `ctx.get('agentPresets')` resolve to the preset roster when
 // composed. A rosterless deployment records no preset for a created Session.
@@ -33,6 +35,20 @@ export const name = 'tool-schedule'
  * scope, so a preset that declares this plugin stays inert while the shipped
  * composition keeps that service off. */
 export const inject = ['tools', 'systemPrompt']
+
+/** Deployment scope of the Schedule tools. */
+export interface Config {
+  /**
+   * Limit `schedule_list`, `schedule_view`, and `schedule_edit` to tasks whose stored target delivers to the calling
+   * Session; any other task reads as `schedule_not_found`.
+   */
+  callerTargetOnly?: boolean
+}
+
+/** Validated tool scope; Host-wide management by default. */
+export const Config: z<Config> = z.object({
+  callerTargetOnly: z.boolean().default(false),
+})
 
 const SESSION_CREATE_SCHEMA = {
   type: 'object',
@@ -202,6 +218,9 @@ const CREATE_DESCRIPTION =
 const LIST_DESCRIPTION =
   'List scheduled tasks, including tasks created from other sessions. Active tasks come first, ordered by scheduledAt.'
 
+const CALLER_LIST_DESCRIPTION =
+  'List scheduled tasks that deliver to this session. Active tasks come first, ordered by scheduledAt.'
+
 const VIEW_DESCRIPTION = 'View one scheduled task by id.'
 
 const EDIT_DESCRIPTION = 'Update, pause, resume, or delete one scheduled task by id. Deleting does not retract queued messages.'
@@ -346,16 +365,18 @@ function targetFor(agent: Agent, target: typeof TARGET_CHOICES[number]): Schedul
  * agent scope still registers the tools but every call without a caller Agent
  * is refused as an internal failure.
  * @param ctx - Context owning the tool and system-prompt registries and the Host Schedule service.
+ * @param config - Whether the tools manage every Host task or only tasks that deliver to the caller.
  */
-export function apply(ctx: Context): void {
-  ctx.inject(['schedule'], registerScheduleTools)
+export function apply(ctx: Context, config: Config): void {
+  ctx.inject(['schedule'], (scope) => { registerScheduleTools(scope, config.callerTargetOnly === true) })
 }
 
 /**
  * Register the tools and shared guidance in the scope that resolved Schedule.
  * @param ctx - Scope whose `schedule` service the tools act through.
+ * @param callerTargetOnly - Hide and refuse tasks that do not deliver to the calling Session.
  */
-function registerScheduleTools(ctx: Context): void {
+function registerScheduleTools(ctx: Context, callerTargetOnly: boolean): void {
   ctx.systemPrompt.section({
     name: 'tool:schedule',
     order: ctx.systemPrompt.getSectionOrder('TOOL_SCHEDULE'),
@@ -367,6 +388,11 @@ function registerScheduleTools(ctx: Context): void {
 
   // Plugin configuration is fixed for the life of the Host service, so the description is read once.
   const targetDescription = targetHelp(ctx.schedule.deliveryLimits().newSessionIntervalSeconds)
+
+  /** Read one task the caller may manage; a hidden task is a miss. */
+  function viewForCaller(agent: Agent, id: string) {
+    return ctx.schedule.view({ id: ScheduleId(id), ...(callerTargetOnly ? { targetSessionId: agent.session.id } : {}) })
+  }
 
   ctx.tools.register(defineTool({
     name: 'schedule_create',
@@ -392,7 +418,7 @@ function registerScheduleTools(ctx: Context): void {
 
   ctx.tools.register(defineTool({
     name: 'schedule_list',
-    description: LIST_DESCRIPTION,
+    description: callerTargetOnly ? CALLER_LIST_DESCRIPTION : LIST_DESCRIPTION,
     parameters: {
       active: {
         type: 'boolean',
@@ -406,8 +432,9 @@ function registerScheduleTools(ctx: Context): void {
     isConcurrencySafe: () => true,
     execute({ active, limit, offset }, exec) {
       // The open parameter root admits unknown keys; only the declared page fields select the Host-wide list.
-      return runForCaller(exec, LIST_ERRORS, () => ctx.schedule.list({
+      return runForCaller(exec, LIST_ERRORS, agent => ctx.schedule.list({
         ...(active === undefined ? {} : { active }),
+        ...(callerTargetOnly ? { targetSessionId: agent.session.id } : {}),
         ...(limit === undefined ? {} : { limit }),
         ...(offset === undefined ? {} : { offset }),
       }).then(page => ({ ...page, items: page.items.map(modelTask) })))
@@ -425,7 +452,7 @@ function registerScheduleTools(ctx: Context): void {
     // Host task reads activate no target Session.
     isConcurrencySafe: () => true,
     execute(args, exec) {
-      return runForCaller(exec, CALLER_ERRORS, () => ctx.schedule.view({ id: ScheduleId(args.id) })
+      return runForCaller(exec, CALLER_ERRORS, agent => viewForCaller(agent, args.id)
         .then(result => 'kind' in result ? modelTask(result) : result))
     },
     presentCall: args => present('View scheduled task', 'read', args.id),
@@ -458,9 +485,16 @@ function registerScheduleTools(ctx: Context): void {
     },
     output: { schema: EDIT_OUTPUT_SCHEMA, render: renderValue },
     execute(args, exec) {
-      return runForCaller(exec, EDIT_ERRORS, (agent) => {
+      return runForCaller(exec, EDIT_ERRORS, async (agent) => {
         const id = ScheduleId(args.id)
-        const expected = args.expectedUpdatedAt === undefined ? {} : { expectedUpdatedAt: args.expectedUpdatedAt }
+        let expectedUpdatedAt: string | null | undefined = args.expectedUpdatedAt
+        if (callerTargetOnly) {
+          const current = await viewForCaller(agent, args.id)
+          if (!('kind' in current)) return current
+          // The read revision makes the write fail as a conflict if the destination changed after the check.
+          expectedUpdatedAt ??= current.updatedAt ?? null
+        }
+        const expected = expectedUpdatedAt === undefined ? {} : { expectedUpdatedAt }
         let request: ScheduleEditRequest
         if (args.action === 'delete') {
           if (PATCH_FIELDS.some(field => args[field] !== undefined)) {
@@ -480,8 +514,8 @@ function registerScheduleTools(ctx: Context): void {
           }
           request = { id, action: 'update', patch, ...expected }
         }
-        return ctx.schedule.edit(request, agent.session.id, exec.signal)
-          .then(result => 'kind' in result ? modelTask(result) : result)
+        const result = await ctx.schedule.edit(request, agent.session.id, exec.signal)
+        return 'kind' in result ? modelTask(result) : result
       })
     },
     presentCall: args => present(args.action === 'delete' ? 'Delete scheduled task' : 'Edit scheduled task', 'other', args.id),

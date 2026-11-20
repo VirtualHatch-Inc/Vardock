@@ -181,14 +181,14 @@ async create( request: ScheduleCreateRequest, actorSessionId?: SessionId, signal
 
 /**
  * Read one page of Host tasks without activating target Sessions.
- * @param request - Optional activity filter, page size, and offset.
+ * @param request - Optional activity and destination filters, page size, and offset.
  * @returns The requested page and total matching task count.
  */
 async list(request: ScheduleListRequest = {}): Promise<ScheduleListResult>
 
 /**
  * Remote form of the shared Host-wide list.
- * @param request - Optional activity filter, page size, and offset.
+ * @param request - Optional activity and destination filters, page size, and offset.
  * @returns The requested page and total matching task count.
  */
 @Remote('list') async remoteList(request: ScheduleListRequest): Promise<ScheduleListResult>
@@ -201,7 +201,7 @@ async list(request: ScheduleListRequest = {}): Promise<ScheduleListResult>
 
 /**
  * Read one task without activating its target Sessions.
- * @param request - Task identity.
+ * @param request - Task identity and optional destination filter.
  * @returns The task, or a non-mutating miss.
  */
 @Remote('view') async view(request: ScheduleViewRequest): Promise<ScheduleViewResult>

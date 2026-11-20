@@ -99,7 +99,7 @@ function stubAgent(id: string, delegationDepth = 0, origin?: 'subagent'): Agent 
     },
     status: 'idle',
     ctx: new Context(),
-    send() {}, followup() {}, steer() {}, inject() {}, cancel() {},
+    send() {}, wake() {}, followup() {}, steer() {}, inject() {}, cancel() {},
     runMaintenance: task => task(new AbortController().signal),
     whenIdle: () => Promise.resolve(),
   }

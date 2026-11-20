@@ -136,9 +136,12 @@ kind: "package-reference"
 | [`src/transport.ts`](src/transport.ts) | 传输工厂：带清洗环境的 stdio spawn、Streamable HTTP |
 | [`src/status.ts`](src/status.ts) | 以 Fiber 为键的状态单元，保留最终清理结果 |
 | [`src/probe.ts`](src/probe.ts) | 一次性探测：连接、取身份、列工具、关闭——不注册任何东西 |
+| [`src/call.ts`](src/call.ts) | 一次性工具调用：连接、调用一个工具、关闭——不注册任何东西（`./call`） |
 | [`src/deadline.ts`](src/deadline.ts) | 启动与探测预算共用的结算截止器 |
 | [`src/diagnostic.ts`](src/diagnostic.ts) | 原因链诊断与密钥值替换 |
 | [`src/types.ts`](src/types.ts) | 客户端可用的连接状态与探测结果类型（`./types`） |
+
+`callServerTool`在取消信号之后接受可选的单连接Fetch API客户端；响应字节限制和清理仍然有效。
 
 导出的 `createMcpToolDefinition(ctx, options)` 将上游工具 schema 和原始结果回调适配到相同的规范值、错误和持久化图像投影。每次回调都收到原样的 `ToolExecution`，包括其 Agent 和取消信号；SDK 的规范类型校验会在投影前检查返回结果。调用方负责注册、取消截止时间和提供方卸载。原生 Cua Driver 提供方使用此适配函数，无需打开 MCP 传输。
 

@@ -1,0 +1,15 @@
+- insert:
+    - id: llm-codex
+      name: '@deepseek-ai/dsh-llm-codex'
+
+- id: agent-default-model
+  config:
+    provider: codex-local
+    model: default
+
+- id: session-title-llm
+  disabled: true
+
+- id: ui-settings-models
+  config:
+    credentialOnboarding: false

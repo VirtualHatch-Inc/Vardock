@@ -871,6 +871,442 @@ type SessionLogUploadExclusion = (request: SessionLogUploadRequest) => boolean
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
 
+<a id="ctxassistant--assistantruntime"></a>
+
+### `ctx.assistant` — `AssistantRuntime`
+
+Dispatches durable requests once and returns explicit worker reports to the main Session.
+
+```ts cordis-catalog
+/**
+ * Resolve the Session opened by the browser's Assistant launcher.
+ * @param signal - launcher request lifetime.
+ * @returns the configured Session identity when the caller may access it.
+ */
+@Remote entrance(signal: AbortSignal): { sessionId: SessionId }
+
+/**
+ * Inspect the entrance grant and retained work without reserving operations or retrying dispatch.
+ * @param sessionId - configured entrance Session.
+ * @param signal - owner read lifetime.
+ * @returns Worker reports, independently verified operation status, and the configured refresh delay.
+ */
+@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async workStatus(sessionId: SessionId, signal: AbortSignal): Promise<WorkStatusSnapshot>
+
+/**
+ * Read the effective limits through the owner-only authority connection.
+ * @param sessionId - Configured entrance Session.
+ * @param signal - Owner request lifetime.
+ * @returns Current limits and revision, including after expiry.
+ */
+@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async grantSettings(sessionId: SessionId, signal: AbortSignal): Promise<OperationGrantBudget>
+
+/**
+ * List the external actions the authority permits and whether each has a stored credential.
+ * @param sessionId - Configured entrance Session.
+ * @param signal - Owner request lifetime.
+ * @returns Each permitted action and its credential state, never a credential value.
+ */
+@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async connections(sessionId: SessionId, signal: AbortSignal): Promise<BrokerConnections>
+
+/**
+ * Read one page of the authority's business records across every work Session, newest first.
+ * @param sessionId - Configured entrance Session.
+ * @param after - Cursor from the preceding page, or undefined for the newest records.
+ * @param signal - Owner request lifetime.
+ * @returns Each record's status and exact request body, and a cursor when older records exist.
+ */
+@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async records(sessionId: SessionId, after: OperationId | undefined, signal: AbortSignal): Promise<BusinessRecords>
+
+/**
+ * Record the owner's determination after checking an unresolved external request.
+ * @param sessionId - Configured entrance Session.
+ * @param resolution - Operation and checked outcome.
+ * @param signal - Owner request lifetime; reread records if the reply is lost.
+ * @returns Whether the witness confirmed the determination.
+ */
+@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async resolveBusiness(sessionId: SessionId, resolution: BusinessResolution, signal: AbortSignal): Promise<{ confirmed: boolean }>
+
+/**
+ * Change one connection in the authority: the owner's stored token, or a permitted external action's unattended rules.
+ * @param sessionId - Configured entrance Session.
+ * @param update - Target and its replacement token or `null` to remove it, or an action's complete rule list.
+ *   This Host forwards the value without retaining it.
+ * @param signal - Cancels the wait; a lost response requires rereading connections.
+ * @returns The connections after the change, never a credential value.
+ */
+@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async setConnection(sessionId: SessionId, update: BrokerConnectionUpdate, signal: AbortSignal): Promise<BrokerConnections>
+
+/**
+ * Apply an owner's reviewed budget and expiry without changing capability permissions.
+ * @param sessionId - Configured entrance Session.
+ * @param update - Exact limits and the revision the owner reviewed.
+ * @param signal - Cancels the wait; a lost response requires rereading settings.
+ * @returns Witnessed effective limits; earlier reservations and outcomes remain retained.
+ */
+@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async updateGrant(sessionId: SessionId, update: OperationGrantUpdate, signal: AbortSignal): Promise<OperationGrantBudget>
+
+/**
+ * Record an owner stop for an accepted work request. Earlier effects remain inspectable.
+ * @param sessionId - configured entrance Session.
+ * @param workId - retained work request to stop.
+ * @param signal - cancels before the stop commits. A lost response may follow a committed stop.
+ * @returns The durable work state, which may already be terminal.
+ */
+@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async stopWork(sessionId: SessionId, workId: AuthorityWorkId, signal: AbortSignal): Promise<{ status: WorkPhase }>
+
+/**
+ * Check a retained external effect through the authority's read-only reconciliation lookup.
+ * @param sessionId - configured entrance Session.
+ * @param workId - exact assignment that owns the operation, including after a continuation.
+ * @param operationId - retained operation to check.
+ * @param signal - cancels the owner wait. Inspect the retained outcome if the response is lost.
+ * @returns The latest witnessed external completion state.
+ */
+@Remote({ resources: { session: (sessionId: SessionId) => sessionId } }) async checkOutcome(sessionId: SessionId, workId: AuthorityWorkId, operationId: OperationId, signal: AbortSignal): Promise<{ completion: 'unconfirmed' | 'pending' | 'succeeded' | 'failed' }>
+
+/**
+ * Read durable work records.
+ * @returns all retained requests and their current outcomes.
+ */
+list(): Work[]
+
+/**
+ * Ask the authority whether a work's report may reach the entrance model before it is shown there.
+ * @param work - retained work request.
+ * @param signal - cancels the authority read.
+ * @returns the work unchanged, or without its artifacts and with a fixed result sentence when its Session imported
+ *   owner files and the authority's current permissions forbid their disclosure.
+ * @throws If the authority cannot answer for a work that imported owner files.
+ */
+async disclosableWork(work: Work, signal: AbortSignal): Promise<Work>
+
+/**
+ * Return coordinates for the latest owner message that included attachments.
+ * @param agent - main Session Agent.
+ * @returns file and image metadata suitable for delegate_work input selection.
+ */
+listInputs(agent: Agent): readonly AvailableInput[]
+
+/**
+ * Identify Sessions whose history may contain attachment contents or export details.
+ * @param sessionId - inspected Session.
+ * @returns whether the Session requires an owner reader.
+ */
+isOwnerOnlyDataSession(sessionId: SessionId): boolean
+
+/**
+ * Require the configured entrance.
+ * @param agent - calling Agent.
+ */
+assertMain(agent: Agent): void
+
+/**
+ * Accept one request or return its prior receipt; a changed payload under the same key fails.
+ * @param agent - main Session Agent.
+ * @param key - stable caller-selected idempotency key, reused after uncertain replies.
+ * @param prompt - complete worker instruction; parent history is not copied.
+ * @param previous - terminal request whose Session should continue.
+ * @param signal - optional cancellation of admission before the queue write begins.
+ * @param permissions - subset of the authority's current delegation ceiling; required for fresh work, and omitted by a
+ *   continuation to keep its predecessor's grant.
+ * @param inputs - owner attachment coordinates for a fresh worker. A continuation inherits the same files.
+ * @returns the durable acceptance receipt, before execution finishes.
+ */
+async delegate( agent: Agent, key: string, prompt: string, previous: WorkId | null = null, signal?: AbortSignal, permissions?: WorkPermissions, inputs?: readonly InputCoordinates[], ): Promise<Work>
+
+/**
+ * Persist a worker's explicit result before acknowledging its report tool.
+ * @param agent - worker whose active request owns the report.
+ * @param status - explicit outcome; idle never implies success.
+ * @param result - summary, evidence, or question returned to the main Session.
+ * @param artifactPaths - paths to final regular files in the worker workspace.
+ * @param signal - optional cancellation while awaiting witnessed artifact exports.
+ * @returns durable reported work. A completed report is recorded as `unknown` while an external request of the work has
+ *   an unresolved outcome or the authority cannot be read. Imported-file completion requires a nonerror exec result observed
+ *   in that work; otherwise it is recorded as failed and withheld. Observation does not verify file use or reported values.
+ */
+async report( agent: Agent, status: ReportStatus, result: string, artifactPaths: readonly string[] = [], signal?: AbortSignal, ): Promise<Work>
+
+/**
+ * Retrieve a published artifact for the authenticated owner download route.
+ * @param workId - retained work report identity.
+ * @param index - zero-based artifact index in that report.
+ * @param signal - optional cancellation of the authority read.
+ * @returns display name and verified bytes for the original witnessed export.
+ */
+async readArtifact(workId: WorkId, index: number, signal?: AbortSignal): Promise<{ name: string; data: Uint8Array }>
+
+/**
+ * Cancel queued or running work; interrupted external effects remain inspectable.
+ * @param agent - main Session Agent.
+ * @param id - request to stop.
+ * @returns durable cancellation receipt.
+ */
+async stop(agent: Agent, id: WorkId): Promise<Work>
+
+/** Retry pending dispatch or delivery after an operator repairs a reported storage error. */
+retry(): void
+```
+
+Types: [Agent](core.md) · [SessionId](core.md)
+
+Source: [`packages/experimental/assistant/src/index.ts`](../../packages/experimental/assistant/src/index.ts)
+
+<a id="ctxhandoffcontrol--handoffcontrol-abstract-seam"></a>
+
+### `ctx.handoffControl` — `HandoffControl` (abstract seam)
+
+Service Definition for authorizing and witnessing Assistant handoffs.
+
+```ts cordis-catalog
+/**
+ * Release the exact handoff for the Host to apply. The Host owns application and deduplication of its effects.
+ * @param request - Host-owned key, source and target Sessions, and exact payload.
+ * @param signal - Cancels the Host wait. An authority release may already have committed.
+ * @returns The release identity, independent outcome receipt, and resolved grant for a delegation.
+ * @throws If release is denied, unavailable, or unconfirmed.
+ */
+abstract release(request: HandoffRequest, signal?: AbortSignal): Promise<HandoffRelease>
+
+/**
+ * Execute a witnessed file transfer under the active work grant.
+ * @param _proposal - Exact file transfer request.
+ * @param _signal - Cancels the Host wait. A reservation may already have committed.
+ * @returns Exact transfer metadata and its independent receipt.
+ * @throws If the provider lacks transfers, or the authority denies or cannot confirm this transfer.
+ */
+transferFile(_proposal: FileProposal, _signal?: AbortSignal): Promise<FileTransferReceipt>
+
+/**
+ * Read a verified export if its disclosure is still authorized.
+ * @param operationId - The retained export operation.
+ * @param _signal - Cancels the Host wait.
+ * @returns The snapshot and its witness receipt.
+ * @throws If the provider lacks transfers, or the snapshot is unavailable or no longer authorized.
+ */
+readExportedFile(operationId: OperationId, _signal?: AbortSignal): Promise<ExportedFile>
+
+/**
+ * Inspect the authority's grant and operation counts without dispatch or witness writes.
+ * @param _sessionId - Trusted Session selected by the Host.
+ * @param _signal - Cancels the Host wait.
+ * @param _workId - Limit operation counts to one assignment when supplied.
+ * @returns Current grant budget and a payload-free summary, available after expiry.
+ * @throws If the provider lacks status reads or the authority is unavailable.
+ */
+overview(_sessionId: SessionId, _signal?: AbortSignal, _workId?: WorkId): Promise<OperationOverview>
+
+/**
+ * Read editable grant settings. The caller must authorize the owner before calling.
+ * @param _signal - Cancels the Host wait.
+ * @returns The current grant and edit revision, including after expiry.
+ * @throws If this provider lacks owner access or the authority is unavailable.
+ */
+grantSettings(_signal?: AbortSignal): Promise<OperationGrantBudget>
+
+/**
+ * Edit the witnessed limits through the owner channel. The caller must authorize the owner before calling.
+ * @param _update - The revision last read by the owner and the desired budget and expiry.
+ * @param _signal - Cancels the Host wait. The caller can read the current settings to resolve an interrupted wait.
+ * @returns The effective grant settings and its edit revision.
+ * @throws If owner access is unavailable, the update is stale or concurrent, or the authority cannot confirm the change.
+ */
+updateGrant(_update: OperationGrantUpdate, _signal?: AbortSignal): Promise<OperationGrantBudget>
+
+/**
+ * List permitted broker actions and their credential state. The caller must authorize the owner before calling.
+ * @param _signal - Cancels the Host wait.
+ * @returns Each permitted action with whether a credential is stored, never the value.
+ * @throws If this provider lacks owner access or the authority has no connection settings.
+ */
+brokerConnections(_signal?: AbortSignal): Promise<BrokerConnections>
+
+/**
+ * Change one connection through the owner channel: its stored bearer token, or a permitted action's unattended rules.
+ * The caller must authorize the owner before calling.
+ * @param _update - Target and its replacement token or `null` to remove the stored one, or an action's complete
+ *   rule list with the grant revision last read.
+ * @param _signal - Cancels the Host wait. The caller can read the connections to resolve an interrupted wait.
+ * @returns The connections after the change, never a credential value.
+ * @throws If owner access is unavailable, the action is not permitted, the token is invalid, or the revision is stale.
+ */
+setBrokerConnection(_update: BrokerConnectionUpdate, _signal?: AbortSignal): Promise<BrokerConnections>
+
+/**
+ * Read one page of business records across every Session, newest first. The caller must authorize the owner before calling.
+ * @param _after - Cursor from the preceding page when supplied.
+ * @param _signal - Cancels the Host wait.
+ * @returns Each record's status and exact request body, and a cursor when older records exist.
+ * @throws If this provider lacks owner access or the authority is unavailable.
+ */
+businessRecords(_after?: OperationId, _signal?: AbortSignal): Promise<BusinessRecords>
+
+/**
+ * Record an owner-checked business outcome. The caller must authorize the owner before calling.
+ * @param _resolution - Retained operation and the outcome the owner determined.
+ * @param _signal - Cancels the Host wait; reread records if the reply is lost.
+ * @returns The operation with witnessed completion, or unconfirmed without a witness receipt.
+ * @throws If owner access is unavailable or the operation is not unresolved.
+ */
+resolveBusiness(_resolution: BusinessResolution, _signal?: AbortSignal): Promise<BusinessOperationStatus>
+
+/**
+ * Read sanitized business status from the authority without contacting the business service.
+ * @param _sessionId - Trusted Session selected by the Host.
+ * @param _signal - Cancels the Host wait.
+ * @param _after - Cursor from the preceding page when supplied.
+ * @param _workId - Limit the page and cursor to one assignment when supplied.
+ * @returns The bounded page of dispatch outcomes and independently witnessed business status.
+ * @throws If the provider lacks business status reads or the authority is unavailable.
+ */
+businessOperations(_sessionId: SessionId, _signal?: AbortSignal, _after?: OperationId, _workId?: WorkId): Promise<BusinessOperations>
+
+/**
+ * Request a read-only business lookup or seal an existing observation.
+ * @param _sessionId - Trusted Session selected by the Host.
+ * @param id - Original business operation identity.
+ * @param _signal - Cancels the Host wait. An accepted lookup can still complete.
+ * @param _workId - Require the original operation to belong to this assignment when supplied.
+ * @returns The dispatch outcome and independently witnessed business status.
+ * @throws If the provider lacks reconciliation, or the lookup is unavailable or unauthorized.
+ */
+reconcile(_sessionId: SessionId, id: OperationId, _signal?: AbortSignal, _workId?: WorkId): Promise<BusinessOperationStatus>
+```
+
+Types: [SessionId](core.md)
+
+Source: [`packages/experimental/operation-control/src/handoff.ts`](../../packages/experimental/operation-control/src/handoff.ts)
+
+<a id="ctxisolatedexecution--isolatedexecution-abstract-seam"></a>
+
+### `ctx.isolatedExecution` — `IsolatedExecution` (abstract seam)
+
+Service Definition for providing isolated Session workspaces.
+
+```ts cordis-catalog
+/**
+ * Prepare a backend for the given namespace. The caller owns the lease and must dispose it even if preflight fails.
+ * @param workspaceNamespace - stable operator-owned namespace for persistent workspaces.
+ * @returns A lease whose readiness must be confirmed before admitting operations.
+ */
+abstract open(workspaceNamespace: string): IsolatedExecutionLease
+```
+
+Source: [`packages/experimental/execution-container/src/service.ts`](../../packages/experimental/execution-container/src/service.ts)
+
+<a id="ctxoperationbroker--operationbroker-abstract-seam"></a>
+
+### `ctx.operationBroker` — `OperationBroker` (abstract seam)
+
+Service Definition for preparing, dispatching, and reconciling approved business requests.
+
+```ts cordis-catalog
+/**
+ * List the actions this provider accepts, without resolving credentials or contacting an endpoint.
+ * @returns Every configured action in ascending action ID order.
+ */
+abstract actions(): readonly BrokerActionDescription[]
+
+/**
+ * Prepare an immutable request for authority storage and exact review without resolving credentials.
+ * Repeated preparations with the same inputs and configuration must produce the same request.
+ * @param action - Operator-configured action ID.
+ * @param body - Exact JSON text supplied by the requester.
+ * @param identity - Authority-supplied parent execution ID and validated proposal key.
+ * @returns The fixed target and exact outgoing body for review.
+ * @throws A {@link BrokerError} when the action or body is invalid.
+ */
+abstract resolve(action: string, body: string, identity: BrokerRequestIdentity): PreparedBrokerRequest
+
+/**
+ * Describe the exact request during human review without resolving credentials or contacting the endpoint.
+ * @param _spec - Stored request awaiting review.
+ * @returns An optional provider presentation alongside the exact outgoing JSON.
+ */
+reviewPresentation(_spec: PreparedBrokerRequest): BrokerReviewPresentation | undefined
+
+/**
+ * Send one request after the authority consumes its witnessed approval.
+ * @param spec - Exact stored request authorized by the authority.
+ * @param correlation - Authority-issued identity and digest of the approved operation.
+ * @param signal - Cancellation for credential lookup and transport.
+ * @returns An HTTP response observation.
+ * @throws A sanitized {@link BrokerError} with the known dispatch state.
+ */
+abstract run(spec: PreparedBrokerRequest, correlation: BrokerCorrelation, signal: AbortSignal): Promise<BrokerObservation>
+
+/**
+ * Look up the business status of a previously admitted operation without resending its request.
+ * Check the saved route against current configuration before lookup. Apply the current POST
+ * body size limit only when preparing or sending a POST.
+ * @param spec - Exact stored request including its configured status endpoint.
+ * @param correlation - The same identity and digest used for dispatch.
+ * @param signal - Cancellation for credential lookup and the complete status response.
+ * @returns Confirmed pending or terminal status, with a receipt ID for a terminal status.
+ * @throws A sanitized {@link BrokerError} when a lookup is unavailable or cannot confirm status.
+ */
+abstract reconcile(spec: PreparedBrokerRequest, correlation: BrokerCorrelation, signal: AbortSignal): Promise<BrokerResolution>
+```
+
+Source: [`packages/experimental/operation-broker/src/index.ts`](../../packages/experimental/operation-broker/src/index.ts)
+
+<a id="ctxoperationbrokermcp--operationbroker-abstract-seam"></a>
+
+### `ctx.operationBrokerMcp` — `OperationBroker` (abstract seam)
+
+Service Definition for preparing, dispatching, and reconciling approved business requests.
+
+```ts cordis-catalog
+/**
+ * List the actions this provider accepts, without resolving credentials or contacting an endpoint.
+ * @returns Every configured action in ascending action ID order.
+ */
+abstract actions(): readonly BrokerActionDescription[]
+
+/**
+ * Prepare an immutable request for authority storage and exact review without resolving credentials.
+ * Repeated preparations with the same inputs and configuration must produce the same request.
+ * @param action - Operator-configured action ID.
+ * @param body - Exact JSON text supplied by the requester.
+ * @param identity - Authority-supplied parent execution ID and validated proposal key.
+ * @returns The fixed target and exact outgoing body for review.
+ * @throws A {@link BrokerError} when the action or body is invalid.
+ */
+abstract resolve(action: string, body: string, identity: BrokerRequestIdentity): PreparedBrokerRequest
+
+/**
+ * Describe the exact request during human review without resolving credentials or contacting the endpoint.
+ * @param _spec - Stored request awaiting review.
+ * @returns An optional provider presentation alongside the exact outgoing JSON.
+ */
+reviewPresentation(_spec: PreparedBrokerRequest): BrokerReviewPresentation | undefined
+
+/**
+ * Send one request after the authority consumes its witnessed approval.
+ * @param spec - Exact stored request authorized by the authority.
+ * @param correlation - Authority-issued identity and digest of the approved operation.
+ * @param signal - Cancellation for credential lookup and transport.
+ * @returns An HTTP response observation.
+ * @throws A sanitized {@link BrokerError} with the known dispatch state.
+ */
+abstract run(spec: PreparedBrokerRequest, correlation: BrokerCorrelation, signal: AbortSignal): Promise<BrokerObservation>
+
+/**
+ * Look up the business status of a previously admitted operation without resending its request.
+ * Check the saved route against current configuration before lookup. Apply the current POST
+ * body size limit only when preparing or sending a POST.
+ * @param spec - Exact stored request including its configured status endpoint.
+ * @param correlation - The same identity and digest used for dispatch.
+ * @param signal - Cancellation for credential lookup and the complete status response.
+ * @returns Confirmed pending or terminal status, with a receipt ID for a terminal status.
+ * @throws A sanitized {@link BrokerError} when a lookup is unavailable or cannot confirm status.
+ */
+abstract reconcile(spec: PreparedBrokerRequest, correlation: BrokerCorrelation, signal: AbortSignal): Promise<BrokerResolution>
+```
+
+Source: [`packages/experimental/operation-broker/src/index.ts`](../../packages/experimental/operation-broker/src/index.ts)
+
 <a id="ctxsessioncontroller--sessioncontroller"></a>
 
 ### `ctx.sessionController` — `SessionController`

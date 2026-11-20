@@ -123,7 +123,7 @@ export function setApprovalPolicy(session: Session, policy: ApprovalPolicy): voi
 
 /**
  * Readonly same-process permission question. `callId` links to an already
- * presented tool call, so arguments are not duplicated here.
+ * presented tool call. Standalone questions can supply their own plain-text detail.
  */
 export interface ApprovalRequest extends ApprovalRequestEvent {
   /**
@@ -224,8 +224,7 @@ export class ApprovalService extends Service {
   /**
    * Ask the composed answerers to decide one readonly same-process request.
    * The service borrows the request, agent, session, and live signal directly.
-   * The request requires an open turn because the audit pair must be enclosed
-   * by the durable log's commit/replay boundary; an idle ask rejects before
+   * A tool request belongs to an open turn. An idle ask rejects before
    * appending anything. The answerer phase always produces an outcome: an
    * aborted signal yields `'cancelled'`, a missing or throwing answerer yields
    * `'unavailable'` (fail closed), and a rogue non-vocabulary return value is
@@ -240,14 +239,34 @@ export class ApprovalService extends Service {
    *   append commit point.
    */
   async request(req: ApprovalRequest): Promise<ApprovalOutcome> {
-    const session = req.agent.session
-    if (!this.approvalStateOf(session).turnOpen) {
-      throw new Error(
-        'approval.request() outside an open turn: the approval/asked + approval/decided audit pair '
-        + 'must be turn-enclosed (a bare event between turns is crash-tail garbage on reload). '
-        + 'Ask from inside the turn that needs the decision.',
-      )
+    if (!this.approvalStateOf(req.agent.session).turnOpen) {
+      throw new Error('approval.request() outside an open turn. Ask during the turn that needs the decision.')
     }
+    return this.recordRequest(req)
+  }
+
+  /**
+   * Ask for one decision on a background operation, including while the answering agent is idle.
+   * The caller supplies a live Session with an active persistence writer. Flush the ask before
+   * dispatch and the decision before returning. A failed audit or checkpoint prevents a grant.
+   * @param req - The answering agent, exact operation in the audit reason, presentation detail, and cancellation signal.
+   * @returns The persisted outcome under the answering Session's policy. Only `allowed-once` grants the request.
+   * @throws When the optional `sessions` service or a Session checkpoint listener is unavailable, or an audit append
+   *   or flush fails.
+   */
+  async requestBackground(req: ApprovalRequest): Promise<ApprovalOutcome> {
+    const sessions = this.ctx.get('sessions')
+    if (sessions === undefined) throw new Error('Background approval requires the sessions service.')
+    const session = req.agent.session
+    return this.recordRequest(req, async () => {
+      if (!await sessions.flush(session)) {
+        throw new Error('Background approval requires a Session checkpoint listener.')
+      }
+    })
+  }
+
+  private async recordRequest(req: ApprovalRequest, flush?: () => Promise<void>): Promise<ApprovalOutcome> {
+    const session = req.agent.session
     const id = ApprovalRequestId(randomUUID())
     session.append('approval/asked', {
       id,
@@ -255,8 +274,10 @@ export class ApprovalService extends Service {
       ...req.callId !== undefined ? { callId: req.callId } : {},
       ...req.reason !== undefined ? { reason: req.reason } : {},
     })
+    if (flush !== undefined) await flush()
     const outcome = await this.decide(req, session)
     session.append('approval/decided', { id, outcome })
+    if (flush !== undefined) await flush()
     return outcome
   }
 

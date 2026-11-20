@@ -58,6 +58,12 @@ export function registerToasts(
       }),
     }, ToastEntry<PropsRuntime<'workspace.toast', 'defaultWorkspaceFailed'>>)
     yield ctx.slots.register({
+      name: 'workspace.toast', key: 'conversationEntranceFailed', locale: 'workspace',
+      inject: (): ToastDisplayInjected<'conversationEntranceFailed'> => ({
+        display: notice => ({ text: notice.message, tone: 'warning' }),
+      }),
+    }, ToastEntry<PropsRuntime<'workspace.toast', 'conversationEntranceFailed'>>)
+    yield ctx.slots.register({
       name: 'workspace.toast', key: 'shortcutForkFailed', locale: 'workspace',
       inject: (): ToastDisplayInjected<'shortcutForkFailed'> => ({
         display: (notice, t) => ({

@@ -1,9 +1,9 @@
 /**
  * Host method-level access control. The Gateway asks `decide()` before it
- * dispatches a non-owner call or forwards an event to a non-owner Peer; list
+ * dispatches a call or forwards an event to a non-owner Peer. List
  * methods filter items through `allows()`; every Peer reads its own access
  * snapshot, first from the index and then from `follow()`. Business packages
- * register one policy per non-owner principal kind.
+ * register endpoint guards and one policy per non-owner principal kind.
  * @module @deepseek-ai/dsh-api-remote-access
  */
 
@@ -23,6 +23,7 @@ import type {
   RemoteAccessDecision,
   RemoteAccessFrame,
   RemoteAccessGrant,
+  RemoteAccessGuard,
   RemoteAccessPolicy,
   RemoteAccessRequest,
 } from './types.ts'
@@ -35,7 +36,7 @@ export type RemoteAccessBaseline = Extract<RemoteAccessFrame, { type: 'baseline'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
-    /** Host method-level access control for non-owner Peers. */
+    /** Host method-level access control. */
     remoteAccess: RemoteAccessService
   }
 }
@@ -69,7 +70,7 @@ interface PolicyEntry {
   readonly policy: RemoteAccessPolicy<Principal>
 }
 
-/** A condition's refusal. */
+/** A refused access decision. */
 type Refusal = Extract<RemoteAccessDecision, { kind: 'deny' }>
 
 /** The answer for one action on one resource, before any `explain()`. */
@@ -118,11 +119,12 @@ class AccessFollower {
 }
 
 /**
- * Registry of access policies, the Gateway's access decisions, list
+ * Registry of access guards and policies, the Gateway's access decisions, list
  * filtering, and the per-Peer access snapshot. Every composition that mounts
  * the Gateway mounts this service too.
  */
 export class RemoteAccessService extends TypertRemoteService {
+  private readonly guards = new Set<RemoteAccessGuard>()
   private readonly policies = new Map<string, PolicyEntry>()
   /** Policies whose failure was logged since the last `invalidate()`; their later failures stay silent. */
   private readonly reported = new Set<PolicyEntry>()
@@ -166,6 +168,34 @@ export class RemoteAccessService extends TypertRemoteService {
   }
 
   /**
+   * Register a synchronous endpoint guard in the caller's fiber. The first
+   * refusal wins, including for the owner. A throwing guard refuses with
+   * `guard-failed` and logs its first failure until removed.
+   * @param guard - business-owned check for Remote calls and per-item filtering.
+   * @returns disposer removing this registration.
+   */
+  guard(guard: RemoteAccessGuard): () => void {
+    let reported = false
+    const check: RemoteAccessGuard = (request) => {
+      try {
+        return guard(request)
+      } catch (error) {
+        if (!reported) {
+          reported = true
+          this.ctx.logger.warn(`remote access: guard failed for ${request.action}; the operation was refused`)
+          this.ctx.logger.warn(error)
+        }
+        return 'guard-failed'
+      }
+    }
+    const dispose = this.ctx.effect(() => {
+      this.guards.add(check)
+      return () => { this.guards.delete(check) }
+    }, 'remoteAccess.guard')
+    return () => { void dispose() }
+  }
+
+  /**
    * Report that the bindings or condition answers for `principal` may have
    * changed. Business packages call this on every grant, revocation, mode
    * change, and expiry; open snapshots re-push, and the next failure of each
@@ -181,23 +211,26 @@ export class RemoteAccessService extends TypertRemoteService {
   }
 
   /**
-   * Gateway-only: decide one request whose resources the Gateway resolved.
-   * The owner is allowed, and so is `remoteAccess/follow`: every Peer reads
-   * its own snapshot. Otherwise the action is allowed only when, on every
-   * listed resource, some binding of the principal's policy names that
-   * resource, has a role listing the action, and has no condition or a
-   * condition that allows. `bindings()` is called once per decision.
+   * Decide one request whose resources the Gateway resolved.
+   * Endpoint guards run first. The owner and `remoteAccess/follow` then
+   * qualify without policy bindings. Other requests require a matching role
+   * that allows the action on every resource. Each policy check reads
+   * `bindings()` once.
    * @param request - the caller or recipient, the action, the resources it
    *   touches, and a call's arguments.
-   * @returns `allow`; or `deny` with `no-allow` when the principal kind has
-   *   no policy, the first refusing condition's reason on the first resource
-   *   no binding allows, else `explain()`'s reason, else `no-allow`;
-   *   `policy-failed` when `bindings()`, a condition, or `explain()` throws,
-   *   logged once per policy until the next `invalidate()`. The Gateway
-   *   throws `remote-access/denied` for a denied call and drops a denied event.
+   * @returns `allow` or a refusal. Guards supply their reason or `guard-failed`
+   *   on exception. Policy refusals use the first refusing condition on the
+   *   first resource without a grant, then `explain()`, then `no-allow`.
+   *   Exceptions from policy callbacks produce `policy-failed`, logged once per
+   *   policy until the next `invalidate()`. The Gateway throws
+   *   `remote-access/denied` for a denied call and drops a denied event.
    */
   decide(request: RemoteAccessRequest<Principal>): RemoteAccessDecision {
     const { principal, action } = request
+    if (!action.startsWith('event:')) {
+      const refusal = this.guardRefusal(request)
+      if (refusal !== undefined) return refusal
+    }
     // oxlint-disable-next-line typescript/no-unnecessary-condition -- other packages merge non-owner kinds into PrincipalMap.
     if (principal.kind === 'owner' || action === FOLLOW_ACTION) return ALLOW
     const entry = this.policies.get(principal.kind)
@@ -228,15 +261,18 @@ export class RemoteAccessService extends TypertRemoteService {
    * check reads the policy's bindings again, so a long-running stream sees
    * binding changes from the next check on.
    * @param resource - resource of one result item.
-   * @returns true for the owner and outside a Remote call; otherwise whether
-   *   the invocation's endpoint action is allowed on `resource` without call
-   *   arguments, false when the policy is absent or fails.
+   * @returns true outside a Remote call. Inside one, true if no endpoint guard
+   *   refuses and the owner or a policy binding permits the action on `resource`.
+   *   Checks omit call arguments.
    */
   allows(resource: RemoteAccessResource): boolean {
     const invocation = this.ctx.invocation
-    const principal = principalOf(invocation)
-    if (invocation === undefined || principal === undefined) return true
+    if (invocation === undefined) return true
+    const principal = invocation.peer.principal
     const action: RemoteAccessAction = `${invocation.request.namespace}/${invocation.request.method}`
+    if (this.guardRefusal({ principal, action, resources: [resource] }) !== undefined) return false
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- other packages merge non-owner kinds into PrincipalMap.
+    if (principal.kind === 'owner') return true
     const entry = this.policies.get(principal.kind)
     if (entry === undefined) return false
     const bindings = this.bindingsOf(entry, principal, action)
@@ -248,7 +284,7 @@ export class RemoteAccessService extends TypertRemoteService {
    * index the webServer renders carries it under
    * {@link REMOTE_ACCESS_SNAPSHOT_KEY} for the Peer the page speaks for.
    * @param principal - the page's caller identity.
-   * @returns the owner baseline for the owner; otherwise the principal's current grants.
+   * @returns the owner baseline for the owner, or the principal's current policy grants.
    */
   snapshotFor(principal: Principal): RemoteAccessBaseline {
     // oxlint-disable-next-line typescript/no-unnecessary-condition -- other packages merge non-owner kinds into PrincipalMap.
@@ -296,6 +332,14 @@ export class RemoteAccessService extends TypertRemoteService {
     } finally {
       this.followers.delete(follower)
     }
+  }
+
+  private guardRefusal(request: RemoteAccessRequest<Principal>): Refusal | undefined {
+    for (const guard of this.guards) {
+      const reason = guard(request)
+      if (reason !== undefined) return { kind: 'deny', reason }
+    }
+    return undefined
   }
 
   /** One `bindings()` call; `undefined` after a logged failure. */
@@ -348,9 +392,9 @@ export class RemoteAccessService extends TypertRemoteService {
 
   /**
    * One grant per bound resource, in first-binding order: the endpoint
-   * actions of the resource's bindings that `decide()` would allow there
-   * without call arguments. A resource with no such action gets no grant;
-   * event actions stay out of the snapshot.
+   * actions allowed by its policy bindings without call arguments. A resource
+   * with no such action gets no grant. Endpoint guards and event actions stay
+   * out of the snapshot.
    */
   private grantsFor(principal: Principal): readonly RemoteAccessGrant[] {
     const entry = this.policies.get(principal.kind)

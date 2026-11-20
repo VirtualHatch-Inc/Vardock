@@ -16,8 +16,9 @@ export function ApprovalCard(props: FactoryComponentPropsOf<'conversation.approv
 }
 
 function ApprovalFlow(props: FactoryComponentPropsOf<'conversation.approval.card'>) {
-  const { requestKey, title, description, subject, warning, allowLabel, canAnswer, onAllow, onReject, onAlways, t } = props
-  const detail = props.callId === undefined ? null : props.renderSlot('conversation.approval.detail', { callId: props.callId })
+  const { requestKey, title, description, detail, subject, warning, allowLabel, canAnswer, onAllow, onReject, onAlways, t } = props
+  const { auditReason } = props
+  const callDetail = props.callId === undefined ? null : props.renderSlot('conversation.approval.detail', { callId: props.callId })
   const [answered, setAnswered] = useState(false)
   const waiting = useRef(false)
   const active = useRef(true)
@@ -42,7 +43,7 @@ function ApprovalFlow(props: FactoryComponentPropsOf<'conversation.approval.card
     if (event.defaultPrevented || !event.currentTarget.contains(document.activeElement)
       || element.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]') !== null) return
     if (event.key !== 'Enter' && event.key !== 'Escape') return
-    if (event.key === 'Enter' && element.closest('button, a[href], [role="button"]') !== null) return
+    if (event.key === 'Enter' && element.closest('button, a[href], summary, [role="button"]') !== null) return
     if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return
     event.preventDefault()
     event.stopPropagation()
@@ -74,7 +75,12 @@ function ApprovalFlow(props: FactoryComponentPropsOf<'conversation.approval.card
             {warning !== undefined && <ApprovalWarning warning={warning} />}
           </div>
           {description !== undefined && <p className={css.description}>{description}</p>}
-          {detail !== null && <div className={css.command}>{detail}</div>}
+          {detail !== undefined && <pre dir="ltr" className={`${css.command} ${css.plainDetail}`}>{detail}</pre>}
+          {callDetail !== null && <div className={css.command}>{callDetail}</div>}
+          {auditReason !== undefined && <details>
+            <summary>{t('auditDetails')}</summary>
+            <pre dir="ltr" className={`${css.command} ${css.plainDetail}`}>{auditReason}</pre>
+          </details>}
         </div>
         <div className={css.actionRow}>
           <Button variant="outline" className={css.reject} disabled={answered} onClick={() => { answer(onReject) }}>

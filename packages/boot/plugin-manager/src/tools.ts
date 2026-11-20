@@ -12,6 +12,7 @@ import { getDshRuntimeVersion } from '@deepseek-ai/dsh-app-boot'
 /** What the model does next for each refusal the manager reports. */
 const ERROR_STEPS: Record<ManagementError['code'], string> = {
   'management-required': 'This entry belongs to plugin management itself and cannot be changed.',
+  'management-fixed': 'The plugin set is fixed by this profile. Tell the user to edit the profile patch and restart to change it.',
   'unaddressable': 'This entry has no unique profile patch target; tell the user to edit the profile patch file directly.',
   'unknown-plugin': 'Call list_plugins and retry with an exact entryId.',
   'invalid-spec': 'Retry with an npm package name, a git URL, a tarball URL, or an absolute local directory.',

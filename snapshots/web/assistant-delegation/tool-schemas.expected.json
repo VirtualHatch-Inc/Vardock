@@ -1,0 +1,316 @@
+{
+  "initial": [
+    {
+      "name": "delegate_work",
+      "description": "Delegate independent work to a background Session and return immediately. Results return to this conversation. Use previous_work_id to explicitly continue a finished or interrupted worker after inspecting its results. Do not automatically repeat uncertain external operations.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "request_key": {
+            "type": "string",
+            "description": "Use a new key for every continuation or changed instruction, permission, or input. Reuse a key only to retrieve the same request with every argument unchanged; that does not run it again."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Self-contained instruction and relevant context for the worker. Selected attachments are imported under input/ in its isolated workspace; the worker receives their paths. Do not give Host paths as worker paths."
+          },
+          "previous_work_id": {
+            "type": "string",
+            "description": "Previous terminal work request whose Session and files should continue with the current prompt. This creates a distinct work request; its earlier operations remain history."
+          },
+          "inputs": {
+            "type": "array",
+            "description": "For fresh work, required when the owner request that triggered this entrance turn has attachments. Select their seq and index from list_work_inputs; pass [] when this work needs no files. Omission is allowed without attachments. A continuation inherits its existing files.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "seq": {
+                  "type": "integer",
+                  "description": "Sequence of the owner message."
+                },
+                "index": {
+                  "type": "integer",
+                  "description": "Zero-based attachment position in the message content."
+                }
+              },
+              "required": [
+                "seq",
+                "index"
+              ]
+            }
+          },
+          "permissions": {
+            "type": "object",
+            "description": "Permissions the worker needs, and no more. Required for new work. With previous_work_id, omit to keep the previous permissions or pass a narrower set. To add a missing permission, start fresh work without previous_work_id.",
+            "additionalProperties": false,
+            "properties": {
+              "exec": {
+                "type": "boolean",
+                "description": "Enable for running any script, reading or processing workspace files, calculating results from files, writing reports, or calling external actions. File import/export permissions do not enable execution."
+              },
+              "brokerActions": {
+                "type": "array",
+                "description": "Exact names from list_business_actions of the external actions the worker may request from a command. Use an empty list when exec is false.",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "data": {
+                "type": "object",
+                "description": "File and service-response permissions for this work. Omit to grant none.",
+                "additionalProperties": false,
+                "properties": {
+                  "import": {
+                    "type": "boolean",
+                    "description": "Enable to copy selected owner attachments into the workspace; reading them also needs exec and both disclosure permissions."
+                  },
+                  "export": {
+                    "type": "boolean",
+                    "description": "Enable to return workspace files as owner downloads; creating them also needs exec and both disclosure permissions."
+                  },
+                  "discloseToModel": {
+                    "type": "boolean",
+                    "description": "Whether imported or exported file data may reach a model through work results."
+                  },
+                  "discloseToUser": {
+                    "type": "boolean",
+                    "description": "Whether imported or exported file data may reach the owner through work history or downloads."
+                  },
+                  "returnResponses": {
+                    "type": "boolean",
+                    "description": "Whether the worker’s commands may receive the response text of an external action, which then reaches the worker model. Without it, the worker sees only the status."
+                  }
+                },
+                "required": [
+                  "import",
+                  "export",
+                  "discloseToModel",
+                  "discloseToUser",
+                  "returnResponses"
+                ]
+              }
+            },
+            "required": [
+              "exec",
+              "brokerActions"
+            ]
+          }
+        },
+        "required": [
+          "request_key",
+          "prompt"
+        ]
+      }
+    },
+    {
+      "name": "inspect_business_operations",
+      "description": "Inspect recorded external operations for a worker Session. Set reconcile to true to check unresolved operations with a read-only lookup. Only succeeded or failed business completion with a receipt confirms the outcome. Do not resend an operation whose outcome is uncertain.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Worker Session id returned by delegate_work or list_work."
+          },
+          "reconcile": {
+            "type": "boolean",
+            "description": "Look up each eligible unresolved operation on this page once.",
+            "default": false
+          },
+          "after": {
+            "type": "string",
+            "description": "Use the previous result’s next value to read older operations."
+          }
+        },
+        "required": [
+          "session_id"
+        ]
+      }
+    },
+    {
+      "name": "list_business_actions",
+      "description": "List the external actions a worker may request, with each action’s purpose and JSON body. Call this before delegating work that needs an external action, and include the action name and body format in the worker’s instructions.",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list_work",
+      "description": "List work states, worker Session ids, granted permissions, and saved results. Also retry pending queue and result delivery after a repaired Host error. A running state is not proof of completion; unknown requires inspection before continuation.",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list_work_inputs",
+      "description": "List attachments in the most recent owner message that included files or images. Use their seq and index to select inputs for new work.",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "schedule_create",
+      "description": "Create a scheduled task. At each occurrence of rrule, prompt is delivered to the target session as a scheduled message from the user. The result includes the task id and the next occurrence as scheduledAt in UTC and scheduledAtLocal in the zone of rrule. After downtime, only the latest missed occurrence is delivered. Delivery can repeat after a crash.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Task name of at most 120 characters in the user's language: action plus object. Omit timing, status, ids, and bracketed suffixes."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Instruction delivered at each occurrence."
+          },
+          "rrule": {
+            "type": "string",
+            "description": "Supported RFC 5545 subset: one DTSTART line, a newline, and one RRULE line. DTSTART ends in Z for UTC or carries TZID with an IANA time zone; a fixed offset such as UTC+5 is Etc/GMT-5, with the sign reversed. DTSTART must name an existing local time. A TZID rule keeps local clock time across daylight-saving changes; generated nonexistent local times are skipped, and repeated ones occur once, at the earlier instant. DTSTART may be in the past; delivery starts with the first occurrence after creation. A one-time delivery is RRULE:FREQ=DAILY;COUNT=1. No SECONDLY; BYSECOND takes one value. COUNT is at most 1000; use UNTIL for longer rules. MINUTELY and HOURLY accept no BY parts, so select clock times with DAILY or WEEKLY plus BYHOUR and BYMINUTE. BYMONTHDAY and ordinal BYDAY require MONTHLY or YEARLY; BYYEARDAY and BYWEEKNO require YEARLY. Ordinal BYDAY cannot combine with BYWEEKNO. Each FREQ period allows at most 10080 candidates before BYSETPOS, which accepts at most 31 values. UNTIL is a UTC instant ending in Z. Example: \"DTSTART;TZID=Asia/Singapore:20260901T080000\\nRRULE:FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1\""
+          },
+          "target": {
+            "type": "string",
+            "description": "this_session delivers to this session; new_once delivers to the same new session every time, opened at the first delivery; new opens a different new session for every delivery. New sessions use this session's working directory and preset. With this_session or new_once, a delivery waits until the previous one finishes, and only the latest occurrence that passed meanwhile is delivered. Use this_session for reminders and for follow-ups to this conversation; use new_once or new for independent work, such as a recurring report, and whenever the user asks for a new conversation.",
+            "enum": [
+              "this_session",
+              "new_once",
+              "new"
+            ]
+          }
+        },
+        "required": [
+          "title",
+          "prompt",
+          "rrule",
+          "target"
+        ]
+      }
+    },
+    {
+      "name": "schedule_edit",
+      "description": "Update, pause, resume, or delete one scheduled task by id. Deleting does not retract queued messages.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Task id."
+          },
+          "action": {
+            "type": "string",
+            "description": "update applies the provided fields, at least one; delete removes the task.",
+            "enum": [
+              "update",
+              "delete"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "Task name of at most 120 characters in the user's language: action plus object. Omit timing, status, ids, and bracketed suffixes."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "New instruction delivered at each occurrence."
+          },
+          "rrule": {
+            "type": "string",
+            "description": "New recurrence in the schedule_create rrule format."
+          },
+          "target": {
+            "type": "string",
+            "description": "Omit to retain the destination and its creation settings. Providing target replaces them; new_once reserves a different Session. New targets capture this Session's working directory and preset. Choices are the same as schedule_create.",
+            "enum": [
+              "this_session",
+              "new_once",
+              "new"
+            ]
+          },
+          "active": {
+            "type": "boolean",
+            "description": "false pauses the task; true resumes only if its timing has a future occurrence. Otherwise provide a new rrule."
+          },
+          "expectedUpdatedAt": {
+            "type": "string",
+            "description": "updatedAt from the latest result that returned this task; if the task changed after that result, the result is schedule_conflict and nothing changes."
+          }
+        },
+        "required": [
+          "id",
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "schedule_list",
+      "description": "List scheduled tasks that deliver to this session. Active tasks come first, ordered by scheduledAt.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "description": "true for active tasks only; false for paused and ended tasks only; omitted for all tasks."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Page size from 1 to 500; defaults to 100."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Number of tasks to skip; defaults to 0."
+          }
+        }
+      }
+    },
+    {
+      "name": "schedule_view",
+      "description": "View one scheduled task by id.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Task id."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "stop_work",
+      "description": "Stop queued or running work. Effects already performed are not undone.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "work_id": {
+            "type": "string",
+            "description": "Request id returned by delegate_work."
+          }
+        },
+        "required": [
+          "work_id"
+        ]
+      }
+    },
+    {
+      "name": "write_notes",
+      "description": "Save notes you need in later conversations: preferences, standing instructions the owner gave you, and facts about recurring work. Save only what the owner asked you to remember. Each call replaces all saved notes, so include every note to keep. The owner approves each change. Saved notes appear at the end of your instructions.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The complete notes, at most 4096 UTF-8 bytes. An empty string clears all notes."
+          }
+        },
+        "required": [
+          "text"
+        ]
+      }
+    }
+  ],
+  "changes": []
+}

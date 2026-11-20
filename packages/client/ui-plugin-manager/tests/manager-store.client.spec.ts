@@ -82,6 +82,7 @@ const NO_TABS: HostObservable<readonly PluginTab[]> = { getSnapshot: () => [], s
 function bench(overrides: Partial<Record<string, ReturnType<typeof vi.fn>>> = {}, enabled = true) {
   const inventory = { list: overrides.inventory ?? vi.fn(() => Promise.resolve(ok({ entries: [], managementAvailable: true }))) }
   const plugins = {
+    management: vi.fn(() => Promise.resolve(ok('full' as const))),
     listBundles: vi.fn<() => Promise<ReturnType<typeof ok<BundleInfo[]>> | ReturnType<typeof refused>>>(
       () => Promise.resolve(ok([BUNDLE])),
     ),

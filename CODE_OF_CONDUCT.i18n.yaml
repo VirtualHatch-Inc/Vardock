@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for CODE_OF_CONDUCT.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write CODE_OF_CONDUCT.md
+/code-of-conduct:
+  en: bafbaeec84600cd1
+  zh: b749abf438a7b864
+/code-of-conduct/expected-behavior:
+  en: a3ba7ca33d5d9b7a
+  zh: c90dd9ac59261a5c
+/code-of-conduct/unacceptable-behavior:
+  en: b231069c071a5878
+  zh: 9f22eae7d0b1844c
+/code-of-conduct/scope:
+  en: 4f53465ff05f28fc
+  zh: da3d0718aae1e178
+/code-of-conduct/reporting:
+  en: 307f0bc18054cdc0
+  zh: 17df1b54f7ceff18
+/code-of-conduct/enforcement:
+  en: d5b6089b3894e0b1
+  zh: 0db6a36ade781023

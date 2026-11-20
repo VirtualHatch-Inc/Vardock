@@ -1,0 +1,24 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../../vendor/cordis" },
+    { "path": "../../../vendor/schemastery" },
+    { "path": "../../core/agent" },
+    { "path": "../../core/session" },
+    { "path": "../../credentials/credentials" },
+    { "path": "../../core/tools" },
+    { "path": "../../interaction/user-approval" },
+    { "path": "../../llm/llm" },
+    { "path": "../../util/brand" },
+    { "path": "../../util/home-paths" },
+    { "path": "../../util/timeout" },
+    { "path": "../execution-container" },
+    { "path": "../operation-broker" },
+    { "path": "../operation-evidence" }
+  ]
+}

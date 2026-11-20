@@ -1,0 +1,61 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/llm-codex/README.md
+/:
+  en: 24b767c447619d2f
+  zh: 45869dd7fd6ea101
+/deepseek-ai-dsh-llm-codex:
+  en: 1384b0712b05bd0d
+  zh: 9939acb271ebb6fe
+/deepseek-ai-dsh-llm-codex/summary:
+  en: 641fe6b710e9c54a
+  zh: feab2b141b66c315
+/deepseek-ai-dsh-llm-codex/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 0c6cfa37161ccef7
+/deepseek-ai-dsh-llm-codex/use-this-package:
+  en: fac890abe70a1cf2
+  zh: d91aa291af9f35b6
+/deepseek-ai-dsh-llm-codex/use-this-package/minimal-configuration:
+  en: 9744841c285b1eee
+  zh: bdf4ff5fbb21116f
+/deepseek-ai-dsh-llm-codex/understand-the-implementation:
+  en: 41a26a77b28347d4
+  zh: 3a7e51e04e6e7308
+/deepseek-ai-dsh-llm-codex/further-exploration:
+  en: dcfdf08b5ae65616
+  zh: 362afd4297828c6b
+/deepseek-ai-dsh-llm-codex/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-llm-codex/model-experience/instructions-and-history:
+  en: 059479671c15403d
+  zh: c55e86adc9f21d63
+/deepseek-ai-dsh-llm-codex/model-experience/instructions-and-history/what-the-model-sees:
+  en: c4fe3e6cce562fc7
+  zh: 94294b3f1465b81b
+/deepseek-ai-dsh-llm-codex/model-experience/instructions-and-history/token-effect:
+  en: bd7ad3ae1b2ac3d0
+  zh: 76d80e4474a66357
+/deepseek-ai-dsh-llm-codex/model-experience/instructions-and-history/kv-cache-effect:
+  en: a64945693652cf28
+  zh: 3ce4e815eca505f1
+/deepseek-ai-dsh-llm-codex/model-experience/tool-definitions:
+  en: 5cf98046cb6eda53
+  zh: d18677364e8fe82c
+/deepseek-ai-dsh-llm-codex/model-experience/tool-definitions/what-the-model-sees:
+  en: 135dea52a31baa4f
+  zh: e03757a11e5d8771
+/deepseek-ai-dsh-llm-codex/model-experience/tool-definitions/token-effect:
+  en: 5d32e91ec0622632
+  zh: 0e94d38c9dc2c6ec
+/deepseek-ai-dsh-llm-codex/model-experience/tool-definitions/kv-cache-effect:
+  en: ca18e7e695648562
+  zh: 2bdd1b2f4eae5378
+/deepseek-ai-dsh-llm-codex/known-limitations-and-deferred-work:
+  en: 6374c920c7d79e84
+  zh: 814e9551226b58f6
+/deepseek-ai-dsh-llm-codex/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: fb3900485bcc14a3

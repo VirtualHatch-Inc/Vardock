@@ -86,6 +86,7 @@ CLI 提供 `dsh plugin --profile <profile> version-exemptions`、`allow-version 
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
+| `management` | `full` | `fixed` 不提供组合包目录，并以 `management-fixed` 拒绝管理器的变更；插件贡献的配置页面和只读清单仍可使用。已选组合包会继续运行，直到编辑配置档并重启。 |
 | `pnpmCommand` | `pnpm` | pnpm 可执行文件名或路径，与 `dsh plugin` 命令一样通过 `PATH` 解析。 |
 | `inspectTimeoutMs` | `20000` | 单次检查所做注册表查询的上限，单位毫秒。 |
 | `githubConnectionTimeoutMs` | `5000` | 安装前 GitHub 仓库连接检查的时限，单位毫秒。 |

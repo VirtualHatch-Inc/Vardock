@@ -50,6 +50,9 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
  * blocks. A package moves on or off this list with its context behavior.
  */
 const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
+  'packages/experimental/execution-container': { kind: 'indirect', reason: 'The authority owns execution; its Agent adapter owns tool registration and recorded output.' },
+  'packages/experimental/operation-broker': { kind: 'indirect', reason: 'The authority owns approval and durable operation results; this provider owns credentialed HTTPS dispatch.' },
+  'packages/experimental/operation-evidence': { kind: 'none', reason: 'The independent evidence service stores facts; its clients own any model-visible receipts.' },
   'packages/client/ui-context-menu': { kind: 'none', reason: 'Client menu presentation and contributed callbacks add no model input.' },
   'packages/client/ui-file-actions': { kind: 'none', reason: 'Explicit user file saves and clipboard operations add no model input.' },
   'packages/client/ui-entry-customization': { kind: 'none', reason: 'Controls browser launchers and prepares a reviewable Creator draft without submitting model input.' },

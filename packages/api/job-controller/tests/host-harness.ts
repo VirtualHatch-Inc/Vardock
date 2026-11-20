@@ -31,6 +31,7 @@ export async function registerAgent(ctx: Context, rawId: string): Promise<Agent 
     status: 'idle',
     ctx: scopeFiber.ctx,
     send: () => {},
+    wake: () => {},
     followup: () => {},
     steer: () => {},
     inject: () => {},

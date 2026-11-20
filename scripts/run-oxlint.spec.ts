@@ -2,13 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { resolveOxlintInvocation } from './run-oxlint.ts'
 
 describe('Oxlint invocation', () => {
-  it('keeps Oxlint\'s own worker default in CI', () => {
-    expect(resolveOxlintInvocation(['.'], { CI: 'true', PATH: '/bin' }, 256)).toEqual({
-      args: ['.', '--format=default'],
-      env: { CI: 'true', PATH: '/bin' },
-    })
-  })
-
   it('bounds local invocations by the local worker budget', () => {
     expect(resolveOxlintInvocation(['.'], { PATH: '/bin' }, 256)).toEqual({
       args: ['.', '--threads=12'],
@@ -29,18 +22,6 @@ describe('Oxlint invocation', () => {
       args: ['.', '--fix', '--threads=4'],
       env: { DSH_OXLINT_THREADS: '4', GOMAXPROCS: '4' },
     })
-  })
-
-  it('uses location-preserving diagnostics in CI', () => {
-    expect(resolveOxlintInvocation(['.'], { CI: 'true', DSH_OXLINT_THREADS: '4' })).toEqual({
-      args: ['.', '--format=default', '--threads=4'],
-      env: { CI: 'true', DSH_OXLINT_THREADS: '4', GOMAXPROCS: '4' },
-    })
-  })
-
-  it('preserves an explicitly selected CI formatter', () => {
-    expect(resolveOxlintInvocation(['.', '--format', 'github'], { CI: 'true' }).args)
-      .toEqual(['.', '--format', 'github'])
   })
 
   it.each(['0', '-1', '1.5', 'auto'])('rejects invalid worker bound %s', (value) => {

@@ -245,6 +245,13 @@ declare module './types.ts' {
     send(message: UserMessage, target: InboxTarget, wakeup: boolean): void
 
     /**
+   * Wake the driver for pending inbox input, preserving its queue positions.
+   * Active work defers the wake until idle if the input remains pending.
+   * An empty inbox or an active disposal cancellation suppresses the wake.
+   */
+    wake(): void
+
+    /**
    * Queue an ordinary follow-up turn and wake the driver. The item becomes the
    * sole ordinary message of its own turn.
    * @param message - identified prompt content and the source that supplied it.

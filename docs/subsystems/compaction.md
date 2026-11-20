@@ -89,6 +89,7 @@ Expected manual failures use `ManualCompactionErrorCode`:
 /** Expected failure classes for an explicit idle-session compaction request. */
 type ManualCompactionErrorCode =
   | 'busy'
+  | 'unsupported'
   | 'cancelled'
   | 'changed'
   | 'summary'
@@ -96,7 +97,7 @@ type ManualCompactionErrorCode =
   | 'persistence'
 ```
 
-`changed` and `summary` close and persist the failed attempt without a summary replacement; image omissions recorded during recovery remain effective. `commit` may follow partial mutation; `persistence` means the in-memory bracket closed but its flush failed. Cancellation remains separate and throws the exact abort reason after required cleanup.
+`unsupported` rejects a model that explicitly disables summary compaction before any compaction event or surface change. `changed` and `summary` close and persist the failed attempt without a summary replacement; image omissions recorded during recovery remain effective. `commit` may follow partial mutation; `persistence` means the in-memory bracket closed but its flush failed. Cancellation remains separate and throws the exact abort reason after required cleanup.
 
 Pressure compaction runs at `agent/pre-step` against the committed request header and at `agent/request` against a changed destination before its header is logged. Model-switch summaries retain the previous route unless an explicit summary target is configured; a failed switch preserves that header and any completed reductions. Once pressure or canonical overflow qualifies, compaction-basic invokes optional [`ctx.toolResultPruner`](../../packages/compaction/compaction-tool-result-pruner/README.md) before range selection, remeasures through `ctx.tokenMeter`, and can advance the surface without a summary. Failed-request recovery runs through `agent/request-error` after the failed step closes and returns a retry action only when the surface replacement generation advances, even if later summary work throws after pruning; cancellation still wins. Region boundaries preserve tool-call/result pairing but not whole turns, allowing early closed steps of one oversized turn to compact. `dsh-compaction-basic` owns thresholds, retained-tail policy, overflow caps, and failure handling.
 
@@ -176,7 +177,7 @@ abstract compactIfNeeded( agent: CompactionAgentContext, trigger: CompactionTrig
  * @param signal - cancellation scoped to this compaction request.
  * @param sourceCommandId - initiating command identity for a manual compaction.
  * @returns the compaction result, or `null` when no safe useful range exists.
- * @throws {@link ManualCompactionError} for expected busy, agent-cancellation,
+ * @throws {@link ManualCompactionError} for unsupported models, expected busy, agent-cancellation,
  * changed-span, summarization/shrink, commit-stage, or persistence failures;
  * an aborted request preserves its exact abort reason. Failed attempts remain
  * visible in the log.

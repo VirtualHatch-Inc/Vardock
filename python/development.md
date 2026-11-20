@@ -29,9 +29,9 @@ uv run --project python/sdk pytest
 
 LibreOffice Kit CI owns visible Office content checks through its installed Node API and CLI on macOS, Windows, and Linux when matching engine packages are published. Harness verifies the relocated Office sidecar through the installed-wheel smoke; the Python tests reject white, transparent, reversed, and text-free output.
 
-Set `DSH_OFFICE_TEST_ARTIFACTS` to a new directory to retain the installed-wheel smoke's Office inputs, PNGs, manifests, and failure diagnostics. CI uploads these files on success and failure; temporary runtime files are excluded.
+Set `DSH_OFFICE_TEST_ARTIFACTS` to a new directory to retain the installed-wheel smoke's Office inputs, PNGs, manifests, and failure diagnostics; temporary runtime files are excluded.
 
-That suite drives fake runtime peers. `scripts/smoke-python-runtime.py` drives the packaged runtime instead. The `python-runtime` CI jobs build Linux x64 and Windows x64 on pull requests, and Linux arm64 plus both macOS architectures on master pushes. Each selected target installs the matching SDK and runtime wheels into a new Python 3.10 virtual environment, runs outside the checkout with `PYTHONPATH` and `DSH_RUNTIME_MODE` unset, proves that both modules and the executable came from those distributions, and then runs every keyless scenario. A focused local source-SDK run can select one built executable and scenario:
+That suite drives fake runtime peers. `scripts/smoke-python-runtime.py` drives the packaged runtime instead. Each target smoke installs the matching SDK and runtime wheels into a new Python 3.10 virtual environment, runs outside the checkout with `PYTHONPATH` and `DSH_RUNTIME_MODE` unset, proves that both modules and the executable came from those distributions, and then runs every keyless scenario. A focused local source-SDK run can select one built executable and scenario:
 
 ```sh
 uv run --project python/sdk python scripts/smoke-python-runtime.py \
@@ -44,7 +44,7 @@ SDK scenarios compare committed expected output under `scripts/snapshots/python-
 
 The `advanced` and `restart` comparisons match native delivery qualifiers against each input's own Session generation, including SDK events and notifications. Captured and other delivery generations retain their numeric values. Each side must use one generation across its Session roles, and fresh logs must identify the current writer. Comparison never rewrites committed recordings.
 
-Trusted pull requests and master pushes also run `--scenario sdk-live --installed-wheel` on each selected native target. That scenario performs two tool-using turns against `https://api.deepseek.com`: it checks the created file immediately, replaces its content with a host-only random challenge, and requires the second turn to copy the changed content into a fresh receipt without modifying the source. Both turns must complete with the exact sentinel answer and a model-requested tool call; external byte comparisons check the files. Missing repository secrets fail instead of self-skipping. Fork and Dependabot pull requests run the complete keyless installed-wheel path but receive no key.
+`--scenario sdk-live --installed-wheel` runs against an installed wheel on the current native target. That scenario performs two tool-using turns against `https://api.deepseek.com`: it checks the created file immediately, replaces its content with a host-only random challenge, and requires the second turn to copy the changed content into a fresh receipt without modifying the source. Both turns must complete with the exact sentinel answer and a model-requested tool call; external byte comparisons check the files. A missing `DEEPSEEK_API_KEY` fails instead of self-skipping.
 
 An interactive smoke test needs `DEEPSEEK_API_KEY` in the environment or repository-root `.env`:
 
@@ -95,12 +95,4 @@ pip install \
   "dist-python/deepseek_harness_runtime_bin-$version-py3-none-macosx_14_0_arm64.whl"
 ```
 
-The runtime distribution is wheel-only. The release pipeline publishes five platform wheels with the pure SDK wheel: Linux x64, Linux arm64, macOS 14 or newer on arm64 and x64, and Windows x64 (`win_amd64`). A `python-v<repository-version>` tag is accepted only when it matches the repository version; prerelease repository versions such as `0.0.1-rc.1` use their normalized PEP 440 spelling, such as `0.0.1rc1`, inside wheel filenames and metadata.
-
-## Validate a release candidate
-
-Manually run the GitHub `Release (Python)` workflow with `publish=false` to build all six wheels, install the Linux release set on Python 3.10 and 3.14, check exact filenames and metadata, enforce PyPI's default per-file size limit, and retain one aggregate artifact with SHA-256 hashes. The run has no registry credentials; a dry run cannot enter either publication job.
-
-Public publication runs from the private automation repository. Package metadata points to the separate read-only public source mirror, which does not run release Actions. The private repository defines the repository variable `PYPI_PUBLISHER_REPOSITORY` as its own `owner/name` and keeps `PUBLIC_PYPI_RELEASE_ENABLED=false` except during an intentional release.
-
-Separate runtime and SDK jobs let an SDK upload failure resume without resending immutable runtime files. They accept `publish=true` only when the workflow runs from the configured publisher repository at the matching `python-v*` tag and the protected `pypi-runtime` and `pypi` environments approve the runtime and SDK jobs, respectively. PyPI Trusted Publishing still supplies short-lived OIDC credentials, but public attestations are disabled because they would disclose the private publisher identity.
+The runtime distribution is wheel-only. A release consists of five platform wheels with the pure SDK wheel: Linux x64, Linux arm64, macOS 14 or newer on arm64 and x64, and Windows x64 (`win_amd64`). A `python-v<repository-version>` tag is accepted only when it matches the repository version; prerelease repository versions such as `0.0.1-rc.1` use their normalized PEP 440 spelling, such as `0.0.1rc1`, inside wheel filenames and metadata.
