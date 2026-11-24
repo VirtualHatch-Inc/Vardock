@@ -323,18 +323,20 @@ async function main(args) {
   if (values['no-open'] && action !== 'start') throw new Error('Use --no-open with start.')
   const modelRoute = values['model-provider'] === undefined || values.model === undefined
     ? undefined : { provider: values['model-provider'], model: values.model }
-  if (action === 'setup' && modelRoute === undefined) {
-    throw new Error(`Choose the model route with --model-provider <route> --model <id>:\n${routes}`)
-  }
   if (action !== 'setup' && (values['model-provider'] !== undefined || values.model !== undefined)) {
     throw new Error('Use --model-provider and --model only with setup.')
   }
   if (values.runtime !== undefined && action !== 'setup') throw new Error('Use --runtime only with setup.')
+  if (process.platform !== 'darwin' && process.platform !== 'linux') {
+    platform.hostCheck(commands)
+  }
+  if (action === 'setup' && modelRoute === undefined) {
+    throw new Error(`Choose the model route with --model-provider <route> --model <id>:\n${routes}`)
+  }
   const runtime = action === 'setup' ? platform.resolveRuntime(values.runtime) : undefined
   if (values.home === '') throw new Error('Provide a directory after --home.')
-  // Doctor reports host failures as Fix lines on macOS and Linux; other hosts must refuse
-  // before jobsFor/socketsFor, whose Unix paths reject Windows drive letters.
-  if (action !== 'doctor' || (process.platform !== 'darwin' && process.platform !== 'linux')) {
+  // Doctor reports host failures as Fix lines; other actions refuse before jobsFor/socketsFor.
+  if (action !== 'doctor') {
     hostCheck(action === 'setup')
   }
   const requested = resolve(values.home ?? join(homedir(), '.vardock'))

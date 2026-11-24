@@ -12,7 +12,7 @@ Use a trusted macOS account. The three services share your user ID, so other pro
 
 Use an Apple silicon Mac running macOS 26 or later, a native arm64 terminal, Node.js 24.9 or newer with its development headers, Xcode Command Line Tools, and the pnpm version pinned by `packageManager` in the root manifest. On macOS, the commands stop with `Use a native Apple silicon terminal and Node.js on macOS 26 or newer.` on any other host. Install Apple's `container` CLI and put it on `PATH`. [Root manifest](../../../../package.json) · [Apple Container installation](https://github.com/apple/container#initial-install)
 
-On Windows and other unsupported hosts, `pnpm vardock --help` prints usage; setup, start, stop, doctor, and verify stop with `Vardock supports macOS and Linux only.`
+On Windows and other unsupported hosts, `pnpm vardock --help` prints usage; setup, start, stop, doctor, and verify stop with `Vardock supports macOS and Linux only.`, including `setup` without `--model-provider` and `--model`.
 
 <a id="choose-a-model-provider"></a>
 ### Choose a model provider

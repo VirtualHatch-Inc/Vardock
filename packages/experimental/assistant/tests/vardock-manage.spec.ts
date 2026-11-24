@@ -278,11 +278,16 @@ it('prints usage on this host without requiring a deployment platform', async ()
 })
 
 it.skipIf(deploymentHost)('refuses setup and doctor on this host with the unsupported-platform error and no stack frames', async () => {
-  for (const args of [['setup', '--model-provider', 'openai', '--model', 'fixture-model'], ['doctor']]) {
+  for (const args of [
+    ['setup'],
+    ['setup', '--model-provider', 'openai', '--model', 'fixture-model'],
+    ['doctor'],
+  ]) {
     const result = await runHost(args)
     expect(result.code).toBe(1)
     expect(result.stdout).toBe('')
     expect(result.stderr).toContain('Vardock supports macOS and Linux only.')
+    expect(result.stderr).not.toContain('Choose the model route')
     expect(result.stderr).not.toContain('at ')
   }
 })
@@ -554,6 +559,9 @@ it.skipIf(process.platform === 'win32')('requires an explicit Linux runtime and 
 
 it.skipIf(process.platform === 'win32')('refuses unsupported platforms before running commands', async (test) => {
   const { home, run, calls } = fixture(test, 'freebsd')
+  const missingModel = await run(['setup'])
+  expect(missingModel.stderr).toContain('Vardock supports macOS and Linux only.')
+  expect(missingModel.stderr).not.toContain('Choose the model route')
   expect((await run(['setup', ...localCodex])).stderr).toContain('Vardock supports macOS and Linux only.')
   expect(calls()).toEqual([])
   expect(existsSync(home)).toBe(false)
