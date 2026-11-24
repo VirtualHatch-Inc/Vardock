@@ -332,7 +332,11 @@ async function main(args) {
   if (values.runtime !== undefined && action !== 'setup') throw new Error('Use --runtime only with setup.')
   const runtime = action === 'setup' ? platform.resolveRuntime(values.runtime) : undefined
   if (values.home === '') throw new Error('Provide a directory after --home.')
-  if (action !== 'doctor') hostCheck(action === 'setup')
+  // Doctor reports host failures as Fix lines on macOS and Linux; other hosts must refuse
+  // before jobsFor/socketsFor, whose Unix paths reject Windows drive letters.
+  if (action !== 'doctor' || (process.platform !== 'darwin' && process.platform !== 'linux')) {
+    hostCheck(action === 'setup')
+  }
   const requested = resolve(values.home ?? join(homedir(), '.vardock'))
   const parent = dirname(requested)
   const root = existsSync(parent) ? join(realpathSync(parent), basename(requested)) : requested

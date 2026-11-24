@@ -256,6 +256,36 @@ function fixture(test: TestContext, platform = 'darwin') {
 
 const localCodex = ['--model-provider', 'codex-local', '--model', 'default']
 const linuxSetup = ['setup', '--model-provider', 'openai', '--model', 'fixture-model', '--runtime', 'runc']
+const deploymentHost = process.platform === 'darwin' || process.platform === 'linux'
+
+async function runHost(args: string[]) {
+  try {
+    const output = await execute(process.execPath, [script, ...args], { encoding: 'utf8', timeout: 15_000 })
+    return { code: 0, stdout: output.stdout, stderr: output.stderr }
+  } catch (error) {
+    if (!(error instanceof Error) || !('code' in error) || typeof error.code !== 'number'
+      || !('stdout' in error) || typeof error.stdout !== 'string'
+      || !('stderr' in error) || typeof error.stderr !== 'string') throw error
+    return { code: error.code, stdout: error.stdout, stderr: error.stderr }
+  }
+}
+
+it('prints usage on this host without requiring a deployment platform', async () => {
+  const help = await runHost(['--help'])
+  expect(help).toMatchObject({ code: 0, stderr: '' })
+  expect(help.stdout).toContain('Usage: pnpm vardock')
+  expect(help.stdout).toContain('Default home: ~/.vardock')
+})
+
+it.skipIf(deploymentHost)('refuses setup and doctor on this host with the unsupported-platform error and no stack frames', async () => {
+  for (const args of [['setup', '--model-provider', 'openai', '--model', 'fixture-model'], ['doctor']]) {
+    const result = await runHost(args)
+    expect(result.code).toBe(1)
+    expect(result.stdout).toBe('')
+    expect(result.stderr).toContain('Vardock supports macOS and Linux only.')
+    expect(result.stderr).not.toContain('at ')
+  }
+})
 
 it.skipIf(process.platform === 'win32')('prints help and rejects invalid command options before checking the host', async (test) => {
   const { run } = fixture(test)
