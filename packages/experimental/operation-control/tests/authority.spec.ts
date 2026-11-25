@@ -3159,6 +3159,21 @@ describe.skipIf(process.platform === 'win32')('configuration record at start', (
     ])
   })
 
+  it('excludes an unconsumed approval from the pending count after a witnessed configuration change', async (test) => {
+    const { approver, client, profile, start, startWitness } = await profileFixture(test)
+    await startWitness()
+    const stop = await start(profile)
+    const sessionId = SessionId('worker-1')
+    const pending = await client.propose(proposal())
+    expect(await client.overview(sessionId)).toMatchObject({ pendingApprovals: 1 })
+    await stop()
+    await start({ ...profile, model: { provider: 'other-provider', model: 'other-model' } })
+    expect(await client.overview(sessionId)).toMatchObject({
+      pendingApprovals: 0, lastFailure: { id: pending.id, code: 'revision-mismatch' },
+    })
+    await expect(approver.decide(decisionFor(pending, 'approve'))).rejects.toMatchObject({ code: 'revision-mismatch' })
+  })
+
   it('refuses every request until the witness confirms the record, then admits under its revision', async (test) => {
     const { client, approver, evidence, profile, start, startWitness } = await profileFixture(test)
     const stopWitness = await startWitness()

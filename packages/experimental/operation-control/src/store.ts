@@ -687,13 +687,16 @@ export class OperationStore {
   }
 
   /**
-   * Check whether an unconsumed approval or permit was invalidated by an owner edit of the limits or unattended rules.
+   * Check whether an unconsumed approval or permit was invalidated.
+   * A witnessed configuration revision, or an owner edit of the limits or rules, invalidates it.
    * @param operation - The retained operation to inspect.
-   * @returns Whether this operation can no longer advance because an owner edit changed the grant.
+   * @returns Whether this operation can no longer advance.
    */
   isPermitSuperseded(operation: Operation): boolean {
     return (operation.state === 'pending-approval' || operation.state === 'pending-evidence' || operation.state === 'issued') &&
-      (operation.limitsRevision !== this.ownerLimits?.receipt.digest || operation.rulesRevision !== this.ownerRules?.receipt.digest)
+      (operation.revision !== this.revision
+        || operation.limitsRevision !== this.ownerLimits?.receipt.digest
+        || operation.rulesRevision !== this.ownerRules?.receipt.digest)
   }
 
   /**
