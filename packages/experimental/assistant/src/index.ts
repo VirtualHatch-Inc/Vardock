@@ -910,7 +910,7 @@ export class AssistantRuntime extends TypertRemoteService {
       const current = this.domain.table('work').get(work.id)
       if (this.handoffAbort.signal.aborted && current?.status === 'queued') return
       if (preparing) this.home.agents.get(work.sessionId)?.cancel({ kind: 'user' })
-      await this.domain.table('work').put(work.id, { ...work,
+      await this.domain.table('work').put(work.id, { ...work, ...current,
         status: current?.status === 'running' ? 'unknown' : 'failed',
         result: preparing
           ? `Dispatch stopped: ${errorChain(error)}. Inspect the worker before explicitly continuing.`
