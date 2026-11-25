@@ -12,6 +12,8 @@ Vardock 基于 DeepSeek Harness（DSH）。这些命令准备并管理本地 Web
 
 使用运行 macOS 26 或更高版本的 Apple 芯片 Mac、原生 arm64 终端、Node.js 24.9 或更新版本及其开发头文件、Xcode Command Line Tools，以及根清单中 `packageManager` 固定的 pnpm 版本。在不满足这些 macOS 条件的主机上，命令会以 `Use a native Apple silicon terminal and Node.js on macOS 26 or newer.` 停止。安装 Apple 的 `container` CLI 并将其加入 `PATH`。[根清单](../../../../package.json) · [Apple Container 安装](https://github.com/apple/container#initial-install)
 
+在 Windows 及其他不受支持的主机上，`pnpm vardock --help` 会打印用法。其余命令会以 `Vardock supports macOS and Linux only.` 停止。
+
 <a id="choose-a-model-provider"></a>
 ### 选择模型 Provider
 

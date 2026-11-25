@@ -14,7 +14,7 @@ import { executable, image, jobsFor, labelPrefix, localCodex, prepare, repo, soc
 const routes = `  LLM API provider  a pi-ai provider route that takes an API key, such as openai, anthropic, deepseek, or xai, and its model ID
   Local Codex       --model-provider ${localCodex} --model default, after codex login`
 const usage = `Usage: pnpm vardock <setup|start|stop|doctor|verify> [--home <directory>]
-  setup --model-provider <route> --model <id> [--port <0-65535>]${platform.setupUsage} [--review-scripts] [--authority-patch <file>] [--permit-action <action-id>]
+  setup --model-provider <route> --model <id> [--port <0-65535>]${platform?.setupUsage ?? ''} [--review-scripts] [--authority-patch <file>] [--permit-action <action-id>]
                            Build dsh and prepare a new private home; --review-scripts asks before every script
   --authority-patch <file> Merge a Cordis patch into the authority profile (repeatable)
   --permit-action <action-id> Write an Assistant broker permission (repeatable); unprovided actions fail authority startup
@@ -311,6 +311,9 @@ async function main(args) {
   if (values.help || args.length === 0) {
     console.log(usage.trimEnd())
     return
+  }
+  if (process.platform !== 'darwin' && process.platform !== 'linux') {
+    throw new Error('Vardock supports macOS and Linux only.')
   }
   const [action] = positionals
   if (positionals.length !== 1 || !actions.includes(action)) throw new Error('Choose setup, start, stop, doctor, or verify. See pnpm vardock --help.')

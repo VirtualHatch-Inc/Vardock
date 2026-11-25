@@ -7,9 +7,8 @@ import { dirname, join, resolve } from 'node:path'
 import launchd from './launchd.mjs'
 import systemd from './systemd.mjs'
 
-/** Operations for the current deployment platform. */
+/** Deployment platform for this process. Unset when the host is not macOS or Linux. */
 export const platform = { darwin: launchd, linux: systemd }[process.platform]
-if (platform === undefined) throw new Error('Vardock supports macOS and Linux only.')
 
 const assistant = dirname(import.meta.dirname)
 /** Checkout whose built dsh launcher and packages back the generated profiles. */

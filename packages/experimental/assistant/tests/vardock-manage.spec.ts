@@ -256,6 +256,41 @@ function fixture(test: TestContext, platform = 'darwin') {
 
 const localCodex = ['--model-provider', 'codex-local', '--model', 'default']
 const linuxSetup = ['setup', '--model-provider', 'openai', '--model', 'fixture-model', '--runtime', 'runc']
+const deploymentHost = process.platform === 'darwin' || process.platform === 'linux'
+
+async function runHost(args: string[]) {
+  try {
+    const output = await execute(process.execPath, [script, ...args], { encoding: 'utf8', timeout: 15_000 })
+    return { code: 0, stdout: output.stdout, stderr: output.stderr }
+  } catch (error) {
+    if (!(error instanceof Error) || !('code' in error) || typeof error.code !== 'number'
+      || !('stdout' in error) || typeof error.stdout !== 'string'
+      || !('stderr' in error) || typeof error.stderr !== 'string') throw error
+    return { code: error.code, stdout: error.stdout, stderr: error.stderr }
+  }
+}
+
+it('prints usage on this host without requiring a deployment platform', async () => {
+  const help = await runHost(['--help'])
+  expect(help).toMatchObject({ code: 0, stderr: '' })
+  expect(help.stdout).toContain('Usage: pnpm vardock')
+  expect(help.stdout).toContain('Default home: ~/.vardock')
+})
+
+it.skipIf(deploymentHost)('refuses every command except help on this host before other checks', async () => {
+  for (const args of [
+    ['setup'],
+    ['setup', '--port', '65536'],
+    ['setup', '--model-provider', 'openai', '--model', 'fixture-model'],
+    ['doctor'],
+    ['nope'],
+  ]) {
+    const result = await runHost(args)
+    expect(result.code).toBe(1)
+    expect(result.stdout).toBe('')
+    expect(result.stderr).toBe('Vardock supports macOS and Linux only.\n')
+  }
+})
 
 it.skipIf(process.platform === 'win32')('prints help and rejects invalid command options before checking the host', async (test) => {
   const { run } = fixture(test)
@@ -524,7 +559,9 @@ it.skipIf(process.platform === 'win32')('requires an explicit Linux runtime and 
 
 it.skipIf(process.platform === 'win32')('refuses unsupported platforms before running commands', async (test) => {
   const { home, run, calls } = fixture(test, 'freebsd')
-  expect((await run(['setup', ...localCodex])).stderr).toContain('Vardock supports macOS and Linux only.')
+  expect((await run(['setup'])).stderr).toBe('Vardock supports macOS and Linux only.\n')
+  expect((await run(['setup', '--port', '65536'])).stderr).toBe('Vardock supports macOS and Linux only.\n')
+  expect((await run(['setup', ...localCodex])).stderr).toBe('Vardock supports macOS and Linux only.\n')
   expect(calls()).toEqual([])
   expect(existsSync(home)).toBe(false)
 })
