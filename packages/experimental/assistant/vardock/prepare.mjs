@@ -7,37 +7,8 @@ import { dirname, join, resolve } from 'node:path'
 import launchd from './launchd.mjs'
 import systemd from './systemd.mjs'
 
-function refuseUnsupported() {
-  throw new Error('Vardock supports macOS and Linux only.')
-}
-
-/** Lets `--help` load on hosts that cannot run the witness, authority, or Web jobs. */
-const unsupportedHost = {
-  hostLabel: 'supported operating system',
-  setupUsage: '',
-  hostCheck: refuseUnsupported,
-  resolveRuntime: refuseUnsupported,
-  refuseEarlierLabels() {},
-  jobFileName: label => `${label}.service`,
-  engineLabel: 'execution engine',
-  engineCommand: 'docker',
-  engineCheck: refuseUnsupported,
-  imageAvailable: refuseUnsupported,
-  jobStatus: refuseUnsupported,
-  checkJobFile: refuseUnsupported,
-  load: refuseUnsupported,
-  unload: refuseUnsupported,
-  announce: refuseUnsupported,
-  stoppedMessage: refuseUnsupported,
-  listenerCommand: 'lsof',
-  account: 'this',
-  logFiles: ['stdout.log', 'stderr.log'],
-  executionRow: refuseUnsupported,
-  jobFile: refuseUnsupported,
-}
-
-/** Operations for the current deployment platform. */
-export const platform = { darwin: launchd, linux: systemd }[process.platform] ?? unsupportedHost
+/** Deployment platform for this process. Unset when the host is not macOS or Linux. */
+export const platform = { darwin: launchd, linux: systemd }[process.platform]
 
 const assistant = dirname(import.meta.dirname)
 /** Checkout whose built dsh launcher and packages back the generated profiles. */

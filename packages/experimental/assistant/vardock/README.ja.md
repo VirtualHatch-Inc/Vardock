@@ -12,7 +12,7 @@ VardockはDeepSeek Harness（DSH）を基盤としています。ここで説明
 
 macOS 26以降のAppleシリコン搭載Mac、ネイティブarm64のターミナル、開発用ヘッダー付きのNode.js 24.9以降、Xcode Command Line Tools、ルートのマニフェストの`packageManager`で指定されたバージョンのpnpmを使ってください。これらのmacOSの条件を満たさない場合、コマンドは`Use a native Apple silicon terminal and Node.js on macOS 26 or newer.`と表示して停止します。Appleの`container` CLIをインストールし、`PATH`に追加してください。[ルートのマニフェスト](../../../../package.json) · [Apple Containerのインストール](https://github.com/apple/container#initial-install)
 
-Windowsなど未対応のホストでは、`pnpm vardock --help`は用法を表示します。setup、start、stop、doctor、verifyは、`--model-provider`と`--model`を省略したsetupも含め、`Vardock supports macOS and Linux only.`と表示して停止します。
+Windowsなど未対応のホストでは、`pnpm vardock --help`は用法を表示します。それ以外のコマンドは`Vardock supports macOS and Linux only.`と表示して停止します。
 
 <a id="choose-a-model-provider"></a>
 ### モデルプロバイダーを選ぶ
