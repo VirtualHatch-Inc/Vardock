@@ -609,11 +609,14 @@ describe('assistant delegation', () => {
     first.tools({ name: 'report_work', args: { status: 'completed', result: 'Alpha evidence' } })
     const alphaNotice = await model.next(main.id)
     expect(workRequests(alphaNotice.options)).toEqual([alpha.id])
-    expect(requestText(alphaNotice.options)).toContain('Alpha evidence')
+    expect(requestText(alphaNotice.options)).toContain(JSON.stringify({ work_id: alpha.id, session_id: alpha.sessionId, status: 'completed', result: 'Alpha evidence' }))
     alphaNotice.text('Alpha is complete.')
     await main.whenIdle()
     second.tools({ name: 'report_work', args: { status: 'needs_input', result: 'Which beta source?' } })
     const betaNotice = await model.next(main.id)
+    expect(requestText(betaNotice.options)).toContain(JSON.stringify({
+      work_id: beta.id, session_id: beta.sessionId, status: 'needs_input', result: 'Which beta source?', required: "Ask the owner this question and wait for the owner's answer before delegating again.",
+    }))
     betaNotice.text('Which beta source should we use?')
     await main.whenIdle()
     await vi.waitFor(() => {
