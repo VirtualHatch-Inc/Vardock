@@ -243,7 +243,10 @@ it.for([
   await main.whenIdle()
 })
 
-it('keeps completed imports available to a continuation after a worker checkpoint fails during dispatch', async (test) => {
+it.for([
+  ['after', 'running', 'unknown'],
+  ['before', 'queued', 'failed'],
+] as const)('keeps completed imports available to a continuation after a worker checkpoint fails %s the running record', async ([, phase, recorded], test) => {
   const { boot, transferFile } = await hostFixture(test)
   const { ctx, main, model } = await boot()
   const signal = new AbortController().signal
@@ -264,7 +267,8 @@ it('keeps completed imports available to a continuation after a worker checkpoin
   const flush = ctx.sessions.flush.bind(ctx.sessions)
   let interrupted = false
   const checkpoint = vi.spyOn(ctx.sessions, 'flush').mockImplementation(async (session) => {
-    if (!interrupted && ctx.assistant.list().some(work => work.sessionId === session.id && work.status === 'running')) {
+    if (!interrupted && ctx.assistant.list().some(work => work.sessionId === session.id && work.status === phase)
+      && transferFile.mock.calls.length > 0) {
       interrupted = true
       throw new Error('worker checkpoint unavailable')
     }
@@ -274,7 +278,7 @@ it('keeps completed imports available to a continuation after a worker checkpoin
 
   const work = await ctx.assistant.delegate(main, 'interrupted', 'Summarize the file.', null, signal, permitted, [{ seq: input.seq, index: input.index }])
   const notice = await model.next(main.id)
-  expect(ctx.assistant.list()).toEqual([expect.objectContaining({ id: work.id, status: 'unknown', inputsReady: true })])
+  expect(ctx.assistant.list()).toEqual([expect.objectContaining({ id: work.id, status: recorded, inputsReady: true })])
   expect(transferFile).toHaveBeenCalledOnce()
   expect(model.observed.map(request => request.options.sessionId)).not.toContain(work.sessionId)
   notice.text('The work needs inspection.')

@@ -884,6 +884,8 @@ export class AssistantRuntime extends TypertRemoteService {
       preparing = true
       await this.importInputs(work, grant, this.handoffAbort.signal)
       this.handoffAbort.signal.throwIfAborted()
+      // A failure during worker setup must not discard imports the authority has already completed.
+      if (grant.inputs?.length && work.inputsReady !== true) await this.domain.table('work').put(work.id, { ...work, inputsReady: true })
       const worker = await this.ensure(work.sessionId, work)
       if (this.phase === 'closing') return
       if (worker.status !== 'idle') throw new AssistantError('busy', `Reserved worker ${worker.id} is busy.`)
