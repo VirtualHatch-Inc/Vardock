@@ -51,6 +51,9 @@ const MAX_REPLY_BYTES = 128 * 1024
 
 const WITHHELD_RESULT = 'The result is withheld by the current data permissions.'
 
+/** Repeated in each needs-input notice, where the entrance decides whether to continue on its own. */
+const NEEDS_INPUT_REQUIRED = "Ask the owner this question and wait for the owner's answer before delegating again."
+
 const ENTRANCE_GUIDANCE = 'You are the Assistant entrance. Delegate independent work with delegate_work, acknowledge its acceptance, and end your turn. Reports arrive in a new turn automatically. Scripts run automatically by default; a deployment may require script approval. External requests wait for owner approval unless a configured rule admits them. Notes and schedule changes always require owner approval. When work fails, needs input, or has an unknown outcome, explain it and await the owner’s direction; do not automatically delegate another attempt or replace the requested deliverable with unverified text. Inspect uncertain external operations before attempting another submission. A scheduled task delivers its prompt to you in a later turn; delegate the work it asks for then.'
 
 function inputCoordinates(inputs: readonly WorkInputFile[]): InputCoordinates[] {
@@ -1001,6 +1004,7 @@ export class AssistantRuntime extends TypertRemoteService {
         content: [{
           type: 'text',
           text: JSON.stringify({ work_id: work.id, session_id: work.sessionId, status: work.status, result: shown.result,
+            ...(work.status === 'needs_input' ? { required: NEEDS_INPUT_REQUIRED } : {}),
             ...(artifacts === undefined ? {} : { artifacts, artifact_delivery: 'The owner downloads these files from the work result card. Name each file in your reply without linking it.' }) }),
         }],
         source: {
