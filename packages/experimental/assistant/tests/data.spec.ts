@@ -242,3 +242,56 @@ it.for([
   restored.text('Both results are available.')
   await main.whenIdle()
 })
+
+it.for([
+  ['after', 'running', 'unknown'],
+  ['before', 'queued', 'failed'],
+] as const)('keeps completed imports available to a continuation after a worker checkpoint fails %s the running record', async ([, phase, recorded], test) => {
+  const { boot, transferFile } = await hostFixture(test)
+  const { ctx, main, model } = await boot()
+  const signal = new AbortController().signal
+  const { receiptId } = await ctx.fileUploads.upload(main, { name: 'revenue.csv', data: 'NDcxMQ==' }, signal)
+  await ctx.sessionController.prompt({ sessionId: main.id, requestId: brandString<SessionRequestId>('interrupted-file'), mode: 'queue',
+    content: [{ type: 'text', text: 'Summarize this file' }, { type: 'file', receiptId }] }, signal)
+  ;(await model.next(main.id)).text('Delegating.')
+  await main.whenIdle()
+  const [input] = ctx.assistant.listInputs(main)
+  if (input === undefined) throw new Error('Expected the uploaded file')
+  const imported = Promise.withResolvers<string>()
+  transferFile.mockImplementationOnce(async ({ file }) => {
+    if (file.kind !== 'import') throw new Error('Expected an import proposal')
+    const { workId, source } = file
+    imported.resolve(`/workspace/${workInputPath(source)}`)
+    return { operationId, receipt, outcome: { kind: 'file-imported', workId, path: workInputPath(source), source, bytes: source.bytes, digest: source.attachmentId } }
+  })
+  const flush = ctx.sessions.flush.bind(ctx.sessions)
+  let interrupted = false
+  const checkpoint = vi.spyOn(ctx.sessions, 'flush').mockImplementation(async (session) => {
+    if (!interrupted && ctx.assistant.list().some(work => work.sessionId === session.id && work.status === phase)
+      && transferFile.mock.calls.length > 0) {
+      interrupted = true
+      throw new Error('worker checkpoint unavailable')
+    }
+    return flush(session)
+  })
+  test.onTestFinished(() => { checkpoint.mockRestore() })
+
+  const work = await ctx.assistant.delegate(main, 'interrupted', 'Summarize the file.', null, signal, permitted, [{ seq: input.seq, index: input.index }])
+  const notice = await model.next(main.id)
+  expect(ctx.assistant.list()).toEqual([expect.objectContaining({ id: work.id, status: recorded, inputsReady: true })])
+  expect(transferFile).toHaveBeenCalledOnce()
+  expect(model.observed.map(request => request.options.sessionId)).not.toContain(work.sessionId)
+  notice.text('The work needs inspection.')
+  await main.whenIdle()
+
+  const continuation = await ctx.assistant.delegate(main, 'resume', 'Finish the summary.', work.id, signal,
+    { ...permitted, data: { ...permitted.data, import: false } })
+  expect(continuation.sessionId).toBe(work.sessionId)
+  const worker = await model.next(continuation.sessionId)
+  expect(requestText(worker.options)).toContain(`Current work ${continuation.id} continues ${work.id}.`)
+  expect(requestText(worker.options)).toContain(await imported.promise)
+  expect(transferFile).toHaveBeenCalledOnce()
+  worker.tools({ name: 'report_work', args: { status: 'needs_input', result: 'Which column holds revenue?' } })
+  ;(await model.next(main.id)).text('The worker has a question.')
+  await main.whenIdle()
+})
