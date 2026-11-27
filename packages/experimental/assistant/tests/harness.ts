@@ -20,7 +20,8 @@ import Commands from '@deepseek-ai/dsh-commands'
 import LocalCredentials from '@deepseek-ai/dsh-credentials-local'
 import LocalFs from '@deepseek-ai/dsh-fs-local'
 import LlmRuntime, { LlmAdapter, ToolCallId, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
-import { HandoffControl, OperationControlError, WorkPrincipalId, type OperationId } from '@deepseek-ai/dsh-operation-control/handoff'
+import * as OperationAgent from '@deepseek-ai/dsh-operation-control/agent'
+import UnixHandoffControl, { HandoffControl, OperationControlError, WorkPrincipalId, type OperationId } from '@deepseek-ai/dsh-operation-control/handoff'
 import PermissionPresets from '@deepseek-ai/dsh-permission-presets'
 import SessionStore, { type SessionEvent, type SessionId } from '@deepseek-ai/dsh-session'
 import * as Checkpoints from '@deepseek-ai/dsh-session-checkpoint-policy'
@@ -193,14 +194,36 @@ export async function hostFixture(test: TestContext) {
     }
   })
 
+  /**
+   * @param authority - sockets of a running operation authority; when given, its handoff and `exec` plugins replace the
+   *   fixture's authority doubles, and approvals reach the entrance.
+   */
   async function boot(
     maxActive = 2,
     mainSessionId = 'assistant-test',
     prepare?: (ctx: Context) => Promise<void> | void,
+    authority?: { socketPath: string; approvalSocketPath: string },
   ) {
     const ctx = new Context()
     contexts.add(ctx)
     const model = new ControlledModel()
+    const operations = authority === undefined ? [
+      ['test-handoff', TestHandoff],
+      ['test-execution-tool', { inject: ['tools'], apply(ctx: Context) {
+        ctx.tools.register(defineTool({
+          name: 'exec',
+          description: 'Execute a command in the isolated worker.',
+          parameters: {},
+          output: { schema: { type: 'string' }, render: (_args, text) => [{ type: 'text', text }] },
+          async execute() { return 'Isolated execution completed.' },
+        }))
+      } }],
+    ] as const : [
+      ['@deepseek-ai/dsh-operation-control/handoff', UnixHandoffControl, authority],
+      ['@deepseek-ai/dsh-operation-control/agent', { ...OperationAgent, inject: ['tools', 'agents', 'approval'] }, {
+        socketPath: authority.socketPath, approval: { socketPath: authority.approvalSocketPath, mainSessionId },
+      }],
+    ] as const
     const entries = [
       ['@deepseek-ai/dsh-llm', LlmRuntime],
       ['@deepseek-ai/dsh-session', SessionStore],
@@ -232,18 +255,9 @@ export async function hostFixture(test: TestContext) {
       ['@deepseek-ai/dsh-workspace', WorkspaceRegistry],
       ['@deepseek-ai/dsh-session-query-sqlite', SessionQuery, { path: ':memory:', openAt: 'never' }],
       ['@deepseek-ai/dsh-api-session-controller', SessionController],
-      ['test-handoff', TestHandoff],
+      ...operations,
       ['test-adapter', { inject: ['llm'], apply(ctx: Context) {
         ctx.llm.registerAdapter(['mock'], model)
-      } }],
-      ['test-execution-tool', { inject: ['tools'], apply(ctx: Context) {
-        ctx.tools.register(defineTool({
-          name: 'exec',
-          description: 'Execute a command in the isolated worker.',
-          parameters: {},
-          output: { schema: { type: 'string' }, render: (_args, text) => [{ type: 'text', text }] },
-          async execute() { return 'Isolated execution completed.' },
-        }))
       } }],
     ] as const
     const assistant = {
