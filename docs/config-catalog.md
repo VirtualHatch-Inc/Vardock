@@ -412,7 +412,7 @@ export interface SearchLimits {
 ## `@deepseek-ai/dsh-assistant`
 
 - `inject`: `agents` · `sessions` · `sessionController` · `sessionPersistence` · `sessionProjections` · `sessionQuery` · `attachments` · `storageDomain` · `tools` · `permissionPresets` · `sessionTitle` · `remoteAccess` · `workspaceRegistry` · `handoffControl` · `llm` · `systemPrompt` · `approval`
-- `source`: [`packages/experimental/assistant/src/index.ts:106`](../packages/experimental/assistant/src/index.ts)
+- `source`: [`packages/experimental/assistant/src/index.ts:108`](../packages/experimental/assistant/src/index.ts)
 
 ```ts config-catalog
 /** Deployment selection for the single assistant entry. */
@@ -425,6 +425,8 @@ export interface Config {
   maxFileBytes?: number
   /** Delay between status reads while the owner views the entrance. */
   workStatusRefreshMs?: number
+  /** Maximum work records observed concurrently within one owner status read. */
+  workStatusConcurrency?: number
   /** Maximum UTF-8 bytes of the notes text one `write_notes` call saves; every entrance request carries the saved notes. */
   maxNotesBytes?: number
 }

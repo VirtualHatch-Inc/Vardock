@@ -76,6 +76,7 @@ Attach files to an owner message and ask the Assistant to use them in fresh work
 | `maxActive` | `2` | Maximum number of concurrent work requests. |
 | `maxFileBytes` | `8388608` | Maximum bytes the Host reads per work input. The authority applies its own transfer limit. |
 | `workStatusRefreshMs` | `2500` | Milliseconds between status reads while the entrance is visible. Accepts 500 through 60000. |
+| `workStatusConcurrency` | `4` | Maximum work records observed concurrently within one owner status read. Accepts integers 1 through 64. Every authorized record is returned in newest-first order; large histories require multiple batches, and concurrent status reads have separate limits. If a batch reports an unavailable authority and the entrance budget cannot be read either, the remaining records report that error without querying the authority. |
 | `maxNotesBytes` | `4096` | Maximum UTF-8 bytes of the notes text one `write_notes` call saves; every entrance request repeats the saved notes. The default holds dozens of short preferences in about 1,000 tokens. Accepts 1 through 65536. |
 
 The [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-assistant) lists the fields and required services for a custom composition.
