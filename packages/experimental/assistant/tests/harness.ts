@@ -197,6 +197,7 @@ export async function hostFixture(test: TestContext) {
     maxActive = 2,
     mainSessionId = 'assistant-test',
     prepare?: (ctx: Context) => Promise<void> | void,
+    workStatusConcurrency?: number,
   ) {
     const ctx = new Context()
     contexts.add(ctx)
@@ -248,7 +249,7 @@ export async function hostFixture(test: TestContext) {
     ] as const
     const assistant = {
       name: 'cordis:@deepseek-ai/dsh-assistant',
-      config: { mainSessionId, maxActive },
+      config: { mainSessionId, maxActive, workStatusConcurrency },
     }
     const configPath = join(root, 'cordis.yml')
     const rows = entries.map(([name, _module, config]) => ({ name: `cordis:${name}`, config }))

@@ -34,7 +34,9 @@ import { reviewScheduleChange, SCHEDULE_CHANGE_TOOLS } from './schedule-review.t
 import { assistantDomain, receiptProjection, WorkId, workExecutionProjection, workInputProjection } from './state.ts'
 import type { AvailableInputState, Receipts, ReportStatus, Work, WorkArtifact, WorkExecution } from './state.ts'
 import { readBudget, readUnresolvedBusiness, readWorkAuthority } from './status.ts'
-import type { OperationId, WorkId as AuthorityWorkId, WorkPhase, WorkStatusSnapshot } from './status-types.ts'
+import type {
+  AuthorityStatus, OperationBudget, OperationId, WorkId as AuthorityWorkId, WorkPhase, WorkStatusSnapshot,
+} from './status-types.ts'
 import { registerTools } from './tools.ts'
 
 export type { Work, WorkId, ReportStatus, WorkArtifact } from './state.ts'
@@ -112,6 +114,8 @@ export interface Config {
   maxFileBytes?: number
   /** Delay between status reads while the owner views the entrance. */
   workStatusRefreshMs?: number
+  /** Maximum work records observed concurrently within one owner status read. */
+  workStatusConcurrency?: number
   /** Maximum UTF-8 bytes of the notes text one `write_notes` call saves; every entrance request carries the saved notes. */
   maxNotesBytes?: number
 }
@@ -128,6 +132,7 @@ export class AssistantRuntime extends TypertRemoteService {
     maxActive: z.number().step(1).min(1).default(2),
     maxFileBytes: z.number().step(1).min(1).max(MAX_FILE_TRANSFER_BYTES).default(DEFAULT_MAX_FILE_BYTES),
     workStatusRefreshMs: z.number().step(1).min(500).max(60_000).default(2_500),
+    workStatusConcurrency: z.number().step(1).min(1).max(64).default(4),
     maxNotesBytes: z.number().step(1).min(1).max(65_536).default(4_096),
   })
   /** Ordinary Session that owns all delegation commands and result notices. */
@@ -136,6 +141,7 @@ export class AssistantRuntime extends TypertRemoteService {
   private readonly maxActive: number
   private readonly maxFileBytes: number
   private readonly workStatusRefreshMs: number
+  private readonly workStatusConcurrency: number
   private readonly maxNotesBytes: number
   private domain!: Domain<typeof assistantDomain>
   private closeDomain: (() => Promise<void>) | undefined
@@ -160,6 +166,7 @@ export class AssistantRuntime extends TypertRemoteService {
     this.maxActive = resolved.maxActive
     this.maxFileBytes = resolved.maxFileBytes
     this.workStatusRefreshMs = resolved.workStatusRefreshMs
+    this.workStatusConcurrency = resolved.workStatusConcurrency
     this.maxNotesBytes = resolved.maxNotesBytes
     ctx.inject(['connection'], (scope) => { registerAssistantArtifacts(scope, this) })
     ctx.effect(() => async () => {
@@ -342,14 +349,38 @@ export class AssistantRuntime extends TypertRemoteService {
     this.requireWorkEntrance(sessionId)
     const lifetime = AbortSignal.any([signal, this.handoffAbort.signal])
     lifetime.throwIfAborted()
+    const budget = readBudget(this.home.handoffControl, sessionId, lifetime)
+    const [authority, work] = await Promise.all([budget, this.observeWork(sessionId, budget, lifetime)])
+    lifetime.throwIfAborted()
+    return { refreshMs: this.workStatusRefreshMs, authority, work }
+  }
+
+  /**
+   * Observe visible work, newest first, at most `workStatusConcurrency` rows at a time. If a batch reports an
+   * unavailable authority and the entrance budget is unreadable too, later rows report that error without asking, so
+   * that an unresponsive authority does not cost one request timeout per batch.
+   */
+  private async observeWork(
+    sessionId: SessionId, budget: Promise<AuthorityStatus<OperationBudget>>, signal: AbortSignal,
+  ): Promise<WorkStatusSnapshot['work']> {
     const handoff = this.home.handoffControl
-    const [authority, work] = await Promise.all([
-      readBudget(handoff, sessionId, lifetime),
-      Promise.all(this.list().reverse().filter(item => this.ctx.remoteAccess.allows({ kind: 'session', id: item.sessionId })).map(async (item) => {
+    const items = this.list().reverse().filter(item => this.ctx.remoteAccess.allows({ kind: 'session', id: item.sessionId }))
+    const rows: WorkStatusSnapshot['work'][number][] = []
+    let unreadable: AuthorityStatus<never> | undefined
+    let failed = false
+    for (let offset = 0; offset < items.length; offset += this.workStatusConcurrency) {
+      signal.throwIfAborted()
+      if (failed && unreadable === undefined) {
+        let probe = await budget
+        // A successful budget read may predate the failure.
+        if (probe.kind === 'available') probe = await readBudget(handoff, sessionId, signal)
+        if (probe.kind === 'unavailable') unreadable = probe
+      }
+      const batch = await Promise.all(items.slice(offset, offset + this.workStatusConcurrency).map(async (item) => {
         const { id, sessionId: worker, prompt, status, result } = item
         const [operations, available] = await Promise.all([
-          readWorkAuthority(handoff, item, lifetime),
-          this.home.sessionPersistence.stat(worker, { signal: lifetime }),
+          unreadable !== undefined && item.authorization !== undefined ? unreadable : readWorkAuthority(handoff, item, signal),
+          this.home.sessionPersistence.stat(worker, { signal }),
         ])
         return { id, sessionId: worker, prompt, status, result, inspectable: available !== undefined,
           ...(operations === undefined ? {} : { operations }),
@@ -357,10 +388,11 @@ export class AssistantRuntime extends TypertRemoteService {
             artifacts: item.artifacts.map(({ name, bytes, digest }) => ({ name, bytes, digest })),
           }),
         }
-      })),
-    ])
-    lifetime.throwIfAborted()
-    return { refreshMs: this.workStatusRefreshMs, authority, work }
+      }))
+      rows.push(...batch)
+      failed = batch.some(row => row.operations?.kind === 'unavailable')
+    }
+    return rows
   }
 
   /**
